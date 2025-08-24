@@ -1,3 +1,8 @@
+# System dependencies for PDF processing and OCR
 poppler-utils
 tesseract-ocr
 libtesseract-dev
+
+# Alternative package names for different systems
+# poppler
+# tesseract

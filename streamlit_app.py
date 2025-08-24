@@ -364,12 +364,14 @@ def show_documents_page():
                         status_text.text(f"Processing page {current_page} of {total_pages}")
                     
                     # Parse PDF
-                    text_content = parse_pdf(tmp_file_path, uploaded_file.name, progress_callback)
-                    
-                    # Clean up temporary file
-                    os.unlink(tmp_file_path)
-                    
-                    if text_content:
+                    try:
+                        document = parse_pdf(tmp_file_path, uploaded_file.name, progress_callback)
+                        text_content = document.get_all_text()
+                        
+                        # Clean up temporary file
+                        os.unlink(tmp_file_path)
+                        
+                        if text_content:
                         # Create RAG chatbot for this property
                         rag_chatbot = create_rag_chatbot(st.session_state.selected_property)
                         
@@ -398,8 +400,14 @@ def show_documents_page():
                     else:
                         st.error(f"Failed to extract text from {uploaded_file.name}")
                         
-                except Exception as e:
-                    st.error(f"Error processing {uploaded_file.name}: {str(e)}")
+                    except Exception as e:
+                        st.error(f"Error processing {uploaded_file.name}: {str(e)}")
+                        # Clean up temporary file if it still exists
+                        try:
+                            if os.path.exists(tmp_file_path):
+                                os.unlink(tmp_file_path)
+                        except:
+                            pass
     
     # Document summary
     if st.session_state.documents_processed:

@@ -6,6 +6,7 @@ import re
 from typing import Dict, List, Any, Optional, Tuple
 from pathlib import Path
 
+# Check for OCR dependencies with better error handling
 try:
     from pdf2image import convert_from_path
     import pytesseract
@@ -13,6 +14,22 @@ try:
     OCR_AVAILABLE = True
 except ImportError:
     OCR_AVAILABLE = False
+    print("Warning: OCR dependencies not available - pdf2image or pytesseract not installed")
+
+# Check for system dependencies
+try:
+    import subprocess
+    result = subprocess.run(['which', 'pdftoppm'], capture_output=True, text=True)
+    POPPLER_AVAILABLE = result.returncode == 0
+except:
+    POPPLER_AVAILABLE = False
+
+try:
+    import subprocess
+    result = subprocess.run(['which', 'tesseract'], capture_output=True, text=True)
+    TESSERACT_AVAILABLE = result.returncode == 0
+except:
+    TESSERACT_AVAILABLE = False
 
 from app.utils import clean_text, truncate_text
 
@@ -95,6 +112,14 @@ def extract_text_with_ocr(pdf_path: str, progress_callback=None) -> List[str]:
         print("OCR not available - pdf2image or pytesseract not installed")
         return []
     
+    if not POPPLER_AVAILABLE:
+        print("Poppler not available - cannot convert PDF to images")
+        return []
+    
+    if not TESSERACT_AVAILABLE:
+        print("Tesseract not available - cannot perform OCR")
+        return []
+    
     try:
         # Convert PDF to images
         images = convert_from_path(pdf_path, dpi=300)
@@ -143,8 +168,8 @@ def parse_pdf(file_path: str, file_name: str, progress_callback=None) -> Documen
     pages_text, metadata = extract_text_with_pymupdf(file_path)
     document.meta = metadata
     
-    # Check if we need OCR
-    if should_use_ocr(pages_text) and OCR_AVAILABLE:
+    # Check if we need OCR and if it's available
+    if should_use_ocr(pages_text) and OCR_AVAILABLE and POPPLER_AVAILABLE and TESSERACT_AVAILABLE:
         print(f"Low text density detected for {file_name}, using OCR...")
         ocr_pages_text = extract_text_with_ocr(file_path, progress_callback)
         
@@ -152,6 +177,10 @@ def parse_pdf(file_path: str, file_name: str, progress_callback=None) -> Documen
             pages_text = ocr_pages_text
             document.ocr_used = True
             print(f"OCR completed for {file_name}")
+        else:
+            print(f"OCR failed for {file_name}, using PyMuPDF text")
+    elif should_use_ocr(pages_text) and not (OCR_AVAILABLE and POPPLER_AVAILABLE and TESSERACT_AVAILABLE):
+        print(f"Low text density detected for {file_name}, but OCR not available. Using PyMuPDF text.")
     
     # Add pages to document
     for page_num, text in enumerate(pages_text, 1):
@@ -200,14 +229,13 @@ def extract_sections_from_text(text: str) -> List[Dict[str, Any]]:
                     'number': section_num,
                     'title': section_title,
                     'start_line': line_num,
-                    'content': line,
-                    'level': determine_section_level(section_num)
+                    'content': []
                 }
                 break
         
-        # Add content to current section
+        # Add line to current section
         if current_section:
-            current_section['content'] += '\n' + line
+            current_section['content'].append(line)
     
     # Add final section
     if current_section:
@@ -286,27 +314,33 @@ def extract_key_values(text: str) -> Dict[str, Any]:
     return key_values
 
 
-def validate_pdf_file(file_path: str) -> Tuple[bool, str]:
-    """Validate PDF file."""
+def validate_pdf_file(file_path: str) -> bool:
+    """Validate that file is a readable PDF."""
     try:
-        # Check if file exists
-        if not Path(file_path).exists():
-            return False, "File does not exist"
-        
-        # Check file size (max 50MB)
-        file_size = Path(file_path).stat().st_size
-        if file_size > 50 * 1024 * 1024:  # 50MB
-            return False, "File size exceeds 50MB limit"
-        
-        # Try to open with PyMuPDF
         doc = fitz.open(file_path)
         page_count = len(doc)
         doc.close()
-        
-        if page_count > 300:
-            return False, "PDF has more than 300 pages"
-        
-        return True, f"Valid PDF with {page_count} pages"
-        
+        return page_count > 0
     except Exception as e:
-        return False, f"Invalid PDF file: {str(e)}"
+        print(f"PDF validation failed: {e}")
+        return False
+
+
+def get_pdf_info(file_path: str) -> Dict[str, Any]:
+    """Get basic information about a PDF file."""
+    try:
+        doc = fitz.open(file_path)
+        info = {
+            'page_count': len(doc),
+            'title': doc.metadata.get('title', ''),
+            'author': doc.metadata.get('author', ''),
+            'subject': doc.metadata.get('subject', ''),
+            'creator': doc.metadata.get('creator', ''),
+            'producer': doc.metadata.get('producer', ''),
+            'file_size': Path(file_path).stat().st_size
+        }
+        doc.close()
+        return info
+    except Exception as e:
+        print(f"Error getting PDF info: {e}")
+        return {}
