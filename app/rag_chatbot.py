@@ -130,7 +130,6 @@ class RAGChatbot:
             self.vector_store = create_vector_store(
                 backend=self.vector_store_backend,
                 storage_dir=str(self.storage_dir),
-                dimension=self.dimension,
                 **self.vector_store_config
             )
             print(f"✅ Initialized {self.vector_store_backend.upper()} vector store")
