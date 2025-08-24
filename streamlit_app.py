@@ -15,19 +15,8 @@ from streamlit_folium import st_folium
 import geocoder
 import time
 
-# Load environment variables and configuration
+# Load environment variables
 load_dotenv()
-
-# Import configuration
-try:
-    from config import STREAMLIT_CLOUD_CONFIG
-    # Set environment variables from config for Streamlit Cloud
-    for key, value in STREAMLIT_CLOUD_CONFIG.items():
-        if key not in os.environ:
-            os.environ[key] = str(value)
-except ImportError:
-    # Fallback if config.py doesn't exist
-    pass
 
 # Add project root to Python path for imports
 project_root = Path(__file__).parent
