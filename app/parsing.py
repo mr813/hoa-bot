@@ -530,6 +530,11 @@ def validate_pdf_file(file_path: str) -> Tuple[bool, str]:
     logger.info(f"🔍 Validating PDF file: {file_path}")
     
     try:
+        # Ensure file_path is a string
+        if not isinstance(file_path, str):
+            logger.error(f"❌ Invalid file path type: {type(file_path)}")
+            return False, f"Invalid file path type: {type(file_path)}"
+        
         # Check if file exists
         if not Path(file_path).exists():
             logger.error(f"❌ File does not exist: {file_path}")

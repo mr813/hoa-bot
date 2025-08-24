@@ -45,11 +45,23 @@ if 'processing_status' not in st.session_state:
 
 def background_processing_worker(file_path: str, file_name: str, doc_type: str, property_id: str, task_id: str):
     """Background worker for PDF processing to avoid blocking the main thread."""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
         st.session_state.processing_status[task_id] = "Processing..."
         
         # Import here to avoid circular imports
         from app.parsing import parse_pdf, validate_pdf_file
+        
+        # Ensure file_path is a string
+        if not isinstance(file_path, str):
+            st.session_state.processing_results[task_id] = {
+                'success': False,
+                'error': f"Invalid file path type: {type(file_path)}"
+            }
+            st.session_state.processing_status[task_id] = "Failed"
+            return
         
         # Validate PDF first
         is_valid, validation_message = validate_pdf_file(file_path)
@@ -106,6 +118,14 @@ def background_processing_worker(file_path: str, file_name: str, doc_type: str, 
             'error': str(e)
         }
         st.session_state.processing_status[task_id] = "Failed"
+    finally:
+        # Clean up temporary file
+        try:
+            if os.path.exists(file_path):
+                os.unlink(file_path)
+                logger.info(f"🗑️ Cleaned up temporary file: {file_path}")
+        except Exception as cleanup_error:
+            logger.warning(f"⚠️ Failed to clean up temporary file: {cleanup_error}")
 
 def main():
     """Main Streamlit application with authentication."""
@@ -442,6 +462,11 @@ def show_documents_page():
                     import uuid
                     task_id = str(uuid.uuid4())
                     
+                    # Store file path in session state to prevent garbage collection
+                    if 'temp_files' not in st.session_state:
+                        st.session_state.temp_files = {}
+                    st.session_state.temp_files[task_id] = tmp_file_path
+                    
                     # Start background processing
                     thread = threading.Thread(
                         target=background_processing_worker,
@@ -499,6 +524,8 @@ def show_documents_page():
                         del st.session_state.processing_status[task_id]
                         if task_id in st.session_state.processing_results:
                             del st.session_state.processing_results[task_id]
+                        if 'temp_files' in st.session_state and task_id in st.session_state.temp_files:
+                            del st.session_state.temp_files[task_id]
                         st.rerun()
     
     # Document summary
