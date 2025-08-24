@@ -25,6 +25,57 @@ def log_memory_usage(stage: str):
     except Exception as e:
         logger.warning(f"⚠️ Could not log memory usage: {e}")
 
+def test_ocr_functionality():
+    """Test OCR functionality and provide diagnostics."""
+    logger.info("🔍 Testing OCR functionality...")
+    
+    issues = []
+    
+    # Test Python dependencies
+    if not OCR_AVAILABLE:
+        issues.append("Python OCR dependencies (pdf2image, pytesseract) not available")
+    
+    # Test system dependencies
+    if not POPPLER_AVAILABLE:
+        issues.append("Poppler (pdftoppm) not found in system PATH")
+    
+    if not TESSERACT_AVAILABLE:
+        issues.append("Tesseract not found in system PATH")
+    
+    # Test Tesseract version
+    if TESSERACT_AVAILABLE:
+        try:
+            import subprocess
+            result = subprocess.run(['tesseract', '--version'], capture_output=True, text=True)
+            if result.returncode == 0:
+                version_line = result.stdout.split('\n')[0]
+                logger.info(f"✅ Tesseract version: {version_line}")
+            else:
+                issues.append("Tesseract version check failed")
+        except Exception as e:
+            issues.append(f"Tesseract version check error: {e}")
+    
+    # Test Poppler version
+    if POPPLER_AVAILABLE:
+        try:
+            import subprocess
+            result = subprocess.run(['pdftoppm', '-h'], capture_output=True, text=True)
+            if result.returncode == 0:
+                logger.info("✅ Poppler (pdftoppm) is working")
+            else:
+                issues.append("Poppler (pdftoppm) command failed")
+        except Exception as e:
+            issues.append(f"Poppler check error: {e}")
+    
+    if issues:
+        logger.warning("⚠️ OCR issues detected:")
+        for issue in issues:
+            logger.warning(f"  - {issue}")
+        return False
+    else:
+        logger.info("✅ All OCR dependencies are working correctly")
+        return True
+
 # Check for OCR dependencies with better error handling
 try:
     from pdf2image import convert_from_path
@@ -55,6 +106,10 @@ try:
 except Exception as e:
     TESSERACT_AVAILABLE = False
     logger.warning(f"⚠️ Tesseract check failed: {e}")
+
+# Test OCR functionality on module load
+if OCR_AVAILABLE and POPPLER_AVAILABLE and TESSERACT_AVAILABLE:
+    test_ocr_functionality()
 
 from app.utils import clean_text, truncate_text
 
@@ -154,6 +209,12 @@ def extract_text_with_ocr(pdf_path: str, progress_callback=None) -> List[str]:
     logger.info(f"🔄 Starting OCR text extraction for: {pdf_path}")
     log_memory_usage("OCR start")
     start_time = time.time()
+    
+    # Test OCR functionality before starting
+    if not test_ocr_functionality():
+        logger.error("❌ OCR functionality test failed - cannot proceed with OCR")
+        print("OCR functionality test failed - cannot proceed with OCR")
+        return []
     
     if not OCR_AVAILABLE:
         logger.error("❌ OCR not available - pdf2image or pytesseract not installed")
@@ -282,9 +343,21 @@ def extract_text_with_ocr(pdf_path: str, progress_callback=None) -> List[str]:
         return pages_text
         
     except Exception as e:
-        logger.error(f"❌ Error extracting text with OCR: {e}")
+        error_msg = f"❌ Error extracting text with OCR: {e}"
+        logger.error(error_msg)
         logger.error(f"📋 Full OCR error traceback: {traceback.format_exc()}")
-        print(f"Error extracting text with OCR: {e}")
+        print(error_msg)
+        
+        # Provide more specific error information
+        if "poppler" in str(e).lower():
+            print("💡 Hint: Make sure poppler-utils is installed (brew install poppler)")
+        elif "tesseract" in str(e).lower():
+            print("💡 Hint: Make sure tesseract is installed (brew install tesseract)")
+        elif "memory" in str(e).lower():
+            print("💡 Hint: Document may be too large for available memory")
+        elif "timeout" in str(e).lower():
+            print("💡 Hint: OCR processing timed out, document may be too large")
+        
         return []
 
 
@@ -349,9 +422,13 @@ def parse_pdf(file_path: str, file_name: str, progress_callback=None) -> Documen
             
             def ocr_worker():
                 try:
+                    logger.info(f"🔄 OCR worker starting for {file_name}")
                     result = extract_text_with_ocr(file_path, progress_callback)
                     ocr_result.append(result)
+                    logger.info(f"✅ OCR worker completed successfully for {file_name}")
                 except Exception as e:
+                    logger.error(f"❌ OCR worker failed for {file_name}: {e}")
+                    logger.error(f"📋 OCR worker error traceback: {traceback.format_exc()}")
                     ocr_error.append(e)
                 finally:
                     ocr_completed.set()
@@ -363,16 +440,18 @@ def parse_pdf(file_path: str, file_name: str, progress_callback=None) -> Documen
             # Wait for completion with timeout (10 minutes)
             if ocr_completed.wait(timeout=600):  # 10 minutes timeout
                 if ocr_error:
-                    logger.error(f"❌ OCR processing failed for {file_name}: {ocr_error[0]}")
-                    print(f"OCR processing failed for {file_name}, using PyMuPDF text")
+                    error = ocr_error[0]
+                    logger.error(f"❌ OCR processing failed for {file_name}: {error}")
+                    print(f"OCR processing failed for {file_name}: {error}")
+                    print("Using PyMuPDF text as fallback")
                 elif ocr_result and ocr_result[0]:
                     pages_text = ocr_result[0]
                     document.ocr_used = True
                     logger.info(f"✅ OCR completed successfully for {file_name}")
                     print(f"OCR completed for {file_name}")
                 else:
-                    logger.warning(f"⚠️ OCR failed for {file_name}, falling back to PyMuPDF text")
-                    print(f"OCR failed for {file_name}, using PyMuPDF text")
+                    logger.warning(f"⚠️ OCR returned empty result for {file_name}, falling back to PyMuPDF text")
+                    print(f"OCR failed for {file_name} (empty result), using PyMuPDF text")
             else:
                 logger.error(f"❌ OCR processing timed out for {file_name}")
                 print(f"OCR processing timed out for {file_name}, using PyMuPDF text")
