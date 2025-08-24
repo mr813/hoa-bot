@@ -514,21 +514,11 @@ def show_documents_page(user_manager):
                         progress_bar = st.progress(0)
                         status_text = st.empty()
                         
-                        # Store progress state in session
+                        # Progress tracking variables
                         progress_key = f"progress_{uploaded_file.name}"
-                        st.session_state[progress_key] = {
-                            'progress': 0,
-                            'message': 'Starting...',
-                            'bar': progress_bar,
-                            'status': status_text
-                        }
                         
                         def update_progress(progress, message):
-                            # Update session state
-                            st.session_state[progress_key]['progress'] = progress
-                            st.session_state[progress_key]['message'] = message
-                            
-                            # Update UI elements
+                            # Update UI elements directly (don't use session state in background thread)
                             try:
                                 progress_bar.progress(progress / 100)
                                 status_text.text(f"📄 {uploaded_file.name}: {message}")
