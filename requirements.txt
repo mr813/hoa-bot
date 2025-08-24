@@ -16,3 +16,5 @@ folium>=0.20.0
 streamlit-folium>=0.25.1
 geocoder>=1.38.1
 markdown>=3.5.0
+torch>=2.0.0
+transformers>=4.30.0
