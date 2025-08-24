@@ -232,19 +232,21 @@ def extract_text_with_ocr(pdf_path: str, progress_callback=None) -> List[str]:
         return []
     
     try:
-        # First, get the total number of pages without loading all images
-        logger.info(f"📄 Getting page count...")
+        # First, get the total number of pages using PyMuPDF (more reliable)
+        logger.info(f"📄 Getting page count using PyMuPDF...")
         try:
-            page_count = len(convert_from_path(pdf_path, dpi=300, first_page=1, last_page=1))
+            doc = fitz.open(pdf_path)
+            page_count = len(doc)
+            doc.close()
             logger.info(f"📄 Total pages detected: {page_count}")
         except Exception as e:
-            logger.error(f"❌ Failed to get page count: {e}")
-            # Try with lower DPI if page count detection fails
+            logger.error(f"❌ Failed to get page count with PyMuPDF: {e}")
+            # Fallback to pdf2image method
             try:
-                page_count = len(convert_from_path(pdf_path, dpi=150, first_page=1, last_page=1))
-                logger.info(f"📄 Total pages detected (low DPI): {page_count}")
+                page_count = len(convert_from_path(pdf_path, dpi=300, first_page=1, last_page=1))
+                logger.info(f"📄 Total pages detected (fallback): {page_count}")
             except Exception as e2:
-                logger.error(f"❌ Failed to get page count even with low DPI: {e2}")
+                logger.error(f"❌ Failed to get page count even with fallback: {e2}")
                 raise Exception(f"Could not process PDF: {e2}")
         
         # Adjust DPI based on page count to prevent memory issues
@@ -292,7 +294,7 @@ def extract_text_with_ocr(pdf_path: str, progress_callback=None) -> List[str]:
                 for i, image in enumerate(images):
                     page_num = start_page + i
                     try:
-                        logger.debug(f"🔍 Processing OCR for page {page_num}/{page_count}")
+                        logger.info(f"🔍 Processing OCR for page {page_num}/{page_count}")
                         page_start_time = time.time()
                         
                         # Update progress if callback provided
@@ -305,7 +307,7 @@ def extract_text_with_ocr(pdf_path: str, progress_callback=None) -> List[str]:
                         pages_text.append(text)
                         
                         page_time = time.time() - page_start_time
-                        logger.debug(f"✅ Page {page_num} OCR completed in {page_time:.2f}s, text length: {len(text)}")
+                        logger.info(f"✅ Page {page_num} OCR completed in {page_time:.2f}s, text length: {len(text)}")
                         
                         # Force garbage collection to free memory
                         import gc
@@ -314,6 +316,7 @@ def extract_text_with_ocr(pdf_path: str, progress_callback=None) -> List[str]:
                     except Exception as page_error:
                         logger.error(f"❌ Error processing OCR for page {page_num}: {page_error}")
                         logger.error(f"📋 Page error traceback: {traceback.format_exc()}")
+                        print(f"❌ Error processing OCR for page {page_num}: {page_error}")
                         pages_text.append("")  # Add empty text for failed page
                 
                 # Clear images from memory after processing batch
@@ -327,6 +330,7 @@ def extract_text_with_ocr(pdf_path: str, progress_callback=None) -> List[str]:
             except Exception as batch_error:
                 logger.error(f"❌ Error processing batch {batch_num + 1}: {batch_error}")
                 logger.error(f"📋 Batch error traceback: {traceback.format_exc()}")
+                print(f"❌ Error processing batch {batch_num + 1}: {batch_error}")
                 # Add empty text for failed pages in this batch
                 for _ in range(end_page - start_page + 1):
                     pages_text.append("")
@@ -339,6 +343,16 @@ def extract_text_with_ocr(pdf_path: str, progress_callback=None) -> List[str]:
         log_memory_usage("OCR completion")
         logger.info(f"✅ OCR extraction completed in {total_time:.2f}s")
         logger.info(f"📊 Total text extracted: {sum(len(text) for text in pages_text)} characters")
+        logger.info(f"📄 Pages processed: {len(pages_text)} out of {page_count} expected")
+        
+        # Verify we processed all pages
+        if len(pages_text) != page_count:
+            logger.warning(f"⚠️ Page count mismatch: processed {len(pages_text)} pages, expected {page_count}")
+            print(f"⚠️ Warning: Only processed {len(pages_text)} out of {page_count} pages")
+            # Add empty pages if we're missing any
+            while len(pages_text) < page_count:
+                pages_text.append("")
+                logger.warning(f"⚠️ Added empty page {len(pages_text)} to match expected count")
         
         return pages_text
         
