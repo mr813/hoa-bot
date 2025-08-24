@@ -26,6 +26,7 @@ if str(project_root) not in sys.path:
 # Import app modules - use direct imports for Streamlit Cloud compatibility
 from app.parsing import parse_pdf, validate_pdf_file
 from app.rag_chatbot import create_rag_chatbot
+from app.config import get_rag_chatbot_config
 from app.user_management import create_user_manager, ensure_property_storage
 from app.utils import clean_text, truncate_text
 
@@ -425,7 +426,12 @@ def show_documents_page(user_manager):
     st.subheader(f"Documents for: {selected_prop['nickname']}")
     
     # Check for existing documents in RAG chatbot storage
-    rag_chatbot = create_rag_chatbot(property_id=st.session_state.selected_property)
+    rag_config = get_rag_chatbot_config()
+    rag_chatbot = create_rag_chatbot(
+        property_id=st.session_state.selected_property,
+        vector_store_backend=rag_config['vector_store_backend'],
+        vector_store_config=rag_config['vector_store_config']
+    )
     storage_info = rag_chatbot.get_storage_info() if rag_chatbot else {}
     
     # Debug: Show storage info
@@ -643,7 +649,12 @@ def show_chat_page(user_manager):
     
     # If no documents in session state, check RAG chatbot storage
     if not property_docs:
-        rag_chatbot = create_rag_chatbot(property_id=st.session_state.selected_property)
+        rag_config = get_rag_chatbot_config()
+        rag_chatbot = create_rag_chatbot(
+            property_id=st.session_state.selected_property,
+            vector_store_backend=rag_config['vector_store_backend'],
+            vector_store_config=rag_config['vector_store_config']
+        )
         storage_info = rag_chatbot.get_storage_info() if rag_chatbot else {}
         
         if storage_info.get('chunks_in_memory', 0) > 0:
@@ -714,7 +725,13 @@ def show_chat_page(user_manager):
                 })
                 
                 # Get chatbot response with reflection setting
-                rag_chatbot = create_rag_chatbot(property_id=st.session_state.selected_property, enable_reflection=enable_reflection)
+                rag_config = get_rag_chatbot_config()
+                rag_chatbot = create_rag_chatbot(
+                    property_id=st.session_state.selected_property,
+                    enable_reflection=enable_reflection,
+                    vector_store_backend=rag_config['vector_store_backend'],
+                    vector_store_config=rag_config['vector_store_config']
+                )
                 if rag_chatbot:
                     spinner_text = "Reflecting and improving response..." if enable_reflection else "Thinking..."
                     with st.spinner(spinner_text):
@@ -784,10 +801,47 @@ def show_settings_page(user_manager):
                 else:
                     st.error(message)
     
+    # Vector Store Configuration
+    st.subheader("Vector Store Configuration")
+    
+    # Show current configuration
+    rag_config = get_rag_chatbot_config()
+    st.info(f"**Current Backend:** {rag_config['vector_store_backend'].upper()}")
+    
+    if rag_config['vector_store_backend'] == 'pinecone':
+        st.success("✅ Pinecone configured - using cloud-based vector storage")
+        st.write("**Benefits:** Scalable, persistent, accessible from anywhere")
+    else:
+        st.info("ℹ️ FAISS configured - using local vector storage")
+        st.write("**Benefits:** Fast, no external dependencies, works offline")
+    
+    # Configuration instructions
+    with st.expander("🔧 How to change vector store backend"):
+        st.write("""
+        **To use Pinecone (cloud storage):**
+        1. Sign up at [pinecone.io](https://pinecone.io)
+        2. Create an index with dimension 384
+        3. Set environment variables:
+           - `VECTOR_STORE_BACKEND=pinecone`
+           - `PINECONE_API_KEY=your_api_key`
+           - `PINECONE_INDEX_NAME=your_index_name` (optional)
+        
+        **To use FAISS (local storage):**
+        1. Set environment variable: `VECTOR_STORE_BACKEND=faiss`
+        2. Or leave unset (FAISS is the default)
+        """)
+    
+    st.write("---")
+    
     # Storage management
     st.subheader("Storage Management")
     
-    rag_chatbot = create_rag_chatbot(property_id=st.session_state.selected_property)
+    rag_config = get_rag_chatbot_config()
+    rag_chatbot = create_rag_chatbot(
+        property_id=st.session_state.selected_property,
+        vector_store_backend=rag_config['vector_store_backend'],
+        vector_store_config=rag_config['vector_store_config']
+    )
     if rag_chatbot:
         storage_info = rag_chatbot.get_storage_info()
         
@@ -799,6 +853,17 @@ def show_settings_page(user_manager):
         with col2:
             st.metric("Vectors in Index", storage_info['vectors_in_index'])
             st.metric("Files on Disk", len(storage_info['files']))
+        
+        # Show vector store information
+        if 'vector_store' in storage_info:
+            vs_info = storage_info['vector_store']
+            st.write("**Vector Store Info:**")
+            st.write(f"• Backend: {vs_info.get('backend', 'Unknown')}")
+            st.write(f"• Total Vectors: {vs_info.get('total_vectors', 0)}")
+            if vs_info.get('backend') == 'Pinecone':
+                st.write(f"• Index Name: {vs_info.get('index_name', 'Unknown')}")
+            elif vs_info.get('backend') == 'FAISS':
+                st.write(f"• Storage Path: {vs_info.get('storage_path', 'Unknown')}")
         
         # Show file details
         if storage_info['files']:

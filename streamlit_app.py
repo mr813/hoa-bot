@@ -88,9 +88,15 @@ def background_processing_worker(file_path: str, file_name: str, doc_type: str, 
             st.session_state.processing_status[task_id] = "Failed"
             return
         
-        # Create RAG chatbot and add document
+                # Create RAG chatbot and add document
         from app.rag_chatbot import create_rag_chatbot
-        rag_chatbot = create_rag_chatbot(property_id)
+        from app.config import get_rag_chatbot_config
+        rag_config = get_rag_chatbot_config()
+        rag_chatbot = create_rag_chatbot(
+            property_id=property_id,
+            vector_store_backend=rag_config['vector_store_backend'],
+            vector_store_config=rag_config['vector_store_config']
+        )
         
         rag_chatbot.add_documents([{
             'text': text_content,

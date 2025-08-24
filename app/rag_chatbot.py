@@ -1,6 +1,6 @@
 """
 RAG Chatbot for HOA Document Analysis
-Uses FAISS vector store and Perplexity API for document-aware conversations.
+Uses configurable vector store (FAISS or Pinecone) and Perplexity API for document-aware conversations.
 """
 
 import os
@@ -10,20 +10,21 @@ import pickle
 import numpy as np
 from typing import List, Dict, Any, Optional
 from sentence_transformers import SentenceTransformer
-import faiss
 import requests
 import time
 from pathlib import Path
 from app.utils import truncate_text
+from app.vector_store import create_vector_store, VectorStore
 
 # Suppress tokenizer parallelism warnings
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 class RAGChatbot:
-    """RAG-powered chatbot using FAISS vector store and Perplexity API."""
+    """RAG-powered chatbot using configurable vector store and Perplexity API."""
     
-    def __init__(self, storage_dir: str = "data", property_id: str = None, enable_reflection: bool = True):
+    def __init__(self, storage_dir: str = "data", property_id: str = None, enable_reflection: bool = True, 
+                 vector_store_backend: str = "faiss", vector_store_config: Dict[str, Any] = None):
         self.api_key = os.getenv('PERPLEXITY_API_KEY')
         self.base_url = "https://api.perplexity.ai/chat/completions"
         self.model = "sonar"
@@ -34,6 +35,10 @@ class RAGChatbot:
         # Reflection configuration
         self.enable_reflection = enable_reflection
         
+        # Vector store configuration
+        self.vector_store_backend = vector_store_backend
+        self.vector_store_config = vector_store_config or {}
+        
         # Property-specific storage
         self.property_id = property_id
         if property_id:
@@ -42,7 +47,6 @@ class RAGChatbot:
             self.storage_dir = Path(storage_dir)
         
         self.storage_dir.mkdir(parents=True, exist_ok=True)
-        self.index_file = self.storage_dir / "faiss_index.bin"
         self.chunks_file = self.storage_dir / "chunks.json"
         self.metadata_file = self.storage_dir / "metadata.json"
         
@@ -120,15 +124,30 @@ class RAGChatbot:
                 print(f"❌ Even fallback embedding failed: {str(fallback_e)}")
                 self.embedding_model = None
         
-        # FAISS index for document storage
+        # Vector store initialization
         self.dimension = 384  # all-MiniLM-L6-v2 embedding dimension
-        self.index = faiss.IndexFlatIP(self.dimension)  # Inner product for cosine similarity
+        try:
+            self.vector_store = create_vector_store(
+                backend=self.vector_store_backend,
+                storage_dir=str(self.storage_dir),
+                dimension=self.dimension,
+                **self.vector_store_config
+            )
+            print(f"✅ Initialized {self.vector_store_backend.upper()} vector store")
+        except Exception as e:
+            print(f"❌ Failed to initialize {self.vector_store_backend} vector store: {e}")
+            # Fallback to FAISS if the configured backend fails
+            print("🔄 Falling back to FAISS vector store")
+            self.vector_store_backend = "faiss"
+            self.vector_store = create_vector_store(
+                backend="faiss",
+                storage_dir=str(self.storage_dir),
+                dimension=self.dimension
+            )
         
         # Document storage
         self.documents = []
         self.document_metadata = []
-        
-
         
         # Load existing data if available
         self._load_persistent_data()
@@ -187,11 +206,6 @@ class RAGChatbot:
     def _load_persistent_data(self):
         """Load persistent data from disk."""
         try:
-            # Load FAISS index
-            if self.index_file.exists():
-                self.index = faiss.read_index(str(self.index_file))
-                print(f"✅ Loaded FAISS index with {self.index.ntotal} vectors")
-            
             # Load chunks
             if self.chunks_file.exists():
                 with open(self.chunks_file, 'r', encoding='utf-8') as f:
@@ -203,20 +217,20 @@ class RAGChatbot:
                 with open(self.metadata_file, 'r', encoding='utf-8') as f:
                     self.document_metadata = json.load(f)
                 print(f"✅ Loaded metadata for {len(self.document_metadata)} chunks")
+            
+            # Get vector store stats
+            stats = self.vector_store.get_stats()
+            print(f"✅ Vector store stats: {stats}")
                 
         except Exception as e:
             print(f"⚠️ Error loading persistent data: {e}")
             # Reset to empty state if loading fails
-            self.index = faiss.IndexFlatIP(self.dimension)
             self.documents = []
             self.document_metadata = []
     
     def _save_persistent_data(self):
         """Save data to disk."""
         try:
-            # Save FAISS index
-            faiss.write_index(self.index, str(self.index_file))
-            
             # Save chunks
             with open(self.chunks_file, 'w', encoding='utf-8') as f:
                 json.dump(self.documents, f, ensure_ascii=False, indent=2)
@@ -233,14 +247,16 @@ class RAGChatbot:
     def clear_all_data(self) -> Dict[str, Any]:
         """Clear all stored data from memory and disk."""
         try:
+            # Clear vector store
+            self.vector_store.clear_all()
+            
             # Clear memory
-            self.index = faiss.IndexFlatIP(self.dimension)
             self.documents = []
             self.document_metadata = []
             
             # Remove files from disk
             files_removed = []
-            for file_path in [self.index_file, self.chunks_file, self.metadata_file]:
+            for file_path in [self.chunks_file, self.metadata_file]:
                 if file_path.exists():
                     file_path.unlink()
                     files_removed.append(file_path.name)
@@ -267,7 +283,7 @@ class RAGChatbot:
         total_size = 0
         file_info = {}
         
-        for file_path in [self.index_file, self.chunks_file, self.metadata_file]:
+        for file_path in [self.chunks_file, self.metadata_file]:
             if file_path.exists():
                 size = file_path.stat().st_size
                 total_size += size
@@ -276,12 +292,16 @@ class RAGChatbot:
                     'size_mb': round(size / (1024 * 1024), 2)
                 }
         
+        # Get vector store stats
+        vector_store_stats = self.vector_store.get_stats()
+        
         return {
             'total_size_bytes': total_size,
             'total_size_mb': round(total_size / (1024 * 1024), 2),
             'files': file_info,
+            'vector_store': vector_store_stats,
             'chunks_in_memory': len(self.documents),
-            'vectors_in_index': self.index.ntotal
+            'vectors_in_index': vector_store_stats.get('total_vectors', 0)
         }
         
     def add_documents(self, documents: List[Dict[str, Any]]):
@@ -336,13 +356,14 @@ class RAGChatbot:
             embeddings = self._generate_embeddings(chunks)
             print(f"✅ Embeddings generated, shape: {embeddings.shape}")
             
-            # Add to FAISS index
-            print(f"📚 Adding embeddings to FAISS index...")
-            if self.index.ntotal == 0:
-                self.index.add(embeddings.astype('float32'))
+            # Add to vector store
+            print(f"📚 Adding embeddings to {self.vector_store_backend.upper()} vector store...")
+            success = self.vector_store.add_vectors(embeddings.astype('float32'), metadata)
+            if success:
+                stats = self.vector_store.get_stats()
+                print(f"✅ {self.vector_store_backend.upper()} vector store updated, total vectors: {stats.get('total_vectors', 0)}")
             else:
-                self.index.add(embeddings.astype('float32'))
-            print(f"✅ FAISS index updated, total vectors: {self.index.ntotal}")
+                print(f"❌ Failed to add vectors to {self.vector_store_backend.upper()} vector store")
             
             # Store documents and metadata
             print(f"💾 Storing {len(chunks)} chunks and metadata in memory...")
@@ -395,25 +416,14 @@ class RAGChatbot:
                 if index < len(self.document_metadata):
                     self.document_metadata.pop(index)
             
-            # Rebuild FAISS index with remaining documents
-            if self.documents:
-                # Check if embedding model is available
-                if self.embedding_model is None:
-                    return {
-                        'success': False,
-                        'message': 'Embedding model not available. Please restart the application.',
-                        'chunks_removed': 0
-                    }
-                
-                # Generate new embeddings for remaining documents
-                embeddings = self._generate_embeddings(self.documents)
-                
-                # Create new FAISS index
-                self.index = faiss.IndexFlatIP(self.dimension)
-                self.index.add(embeddings.astype('float32'))
-            else:
-                # If no documents left, create empty index
-                self.index = faiss.IndexFlatIP(self.dimension)
+            # Remove from vector store
+            result = self.vector_store.remove_document(document_name)
+            if not result['success']:
+                return {
+                    'success': False,
+                    'message': f"Failed to remove document from vector store: {result['message']}",
+                    'chunks_removed': 0
+                }
             
             # Save updated data to disk
             self._save_persistent_data()
@@ -439,22 +449,7 @@ class RAGChatbot:
         Returns:
             List of dictionaries containing document information
         """
-        if not self.document_metadata:
-            return []
-        
-        # Group chunks by document
-        document_counts = {}
-        for metadata in self.document_metadata:
-            doc_name = metadata.get('source_document', 'Unknown')
-            if doc_name not in document_counts:
-                document_counts[doc_name] = {
-                    'name': doc_name,
-                    'type': metadata.get('document_type', 'Unknown'),
-                    'chunk_count': 0
-                }
-            document_counts[doc_name]['chunk_count'] += 1
-        
-        return list(document_counts.values())
+        return self.vector_store.get_document_list()
             
     def _split_text_into_chunks(self, text: str, max_tokens: int = 400, overlap: int = 50) -> List[str]:
         """
@@ -610,7 +605,7 @@ class RAGChatbot:
     
     def retrieve_relevant_context(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
         """Retrieve relevant document chunks for a query with enhanced search strategy."""
-        if not self.documents or self.index.ntotal == 0:
+        if not self.documents:
             return []
         
         # Check if embedding model is available
@@ -620,27 +615,30 @@ class RAGChatbot:
         # Generate query embedding
         query_embedding = self._generate_embeddings([query])
         
-        # Search FAISS index with more results to filter by document type
-        scores, indices = self.index.search(query_embedding.astype('float32'), top_k * 3)
+        # Search vector store with more results to filter by document type
+        scores, metadata_list = self.vector_store.search(query_embedding[0], top_k * 3)
         
         # Separate chunks by document type
         other_chunks = []
         bylaws_chunks = []
         
-        for i, (score, idx) in enumerate(zip(scores[0], indices[0])):
-            if idx < len(self.documents):
-                chunk_data = {
-                    'content': self.documents[idx],
-                    'metadata': self.document_metadata[idx],
-                    'similarity_score': float(score)
-                }
-                
-                # Categorize by document type
-                doc_type = self.document_metadata[idx].get('document_type', 'Unknown')
-                if doc_type == 'HOA Bylaws':
-                    bylaws_chunks.append(chunk_data)
-                else:
-                    other_chunks.append(chunk_data)
+        for i, (score, metadata) in enumerate(zip(scores, metadata_list)):
+            if metadata and 'chunk_index' in metadata:
+                # Find the corresponding document content
+                chunk_idx = metadata.get('chunk_index', 0)
+                if chunk_idx < len(self.documents):
+                    chunk_data = {
+                        'content': self.documents[chunk_idx],
+                        'metadata': metadata,
+                        'similarity_score': float(score)
+                    }
+                    
+                    # Categorize by document type
+                    doc_type = metadata.get('document_type', 'Unknown')
+                    if doc_type == 'HOA Bylaws':
+                        bylaws_chunks.append(chunk_data)
+                    else:
+                        other_chunks.append(chunk_data)
         
         # Enhanced search strategy: prioritize "Other" documents first, then "HOA Bylaws"
         relevant_chunks = []
@@ -960,8 +958,14 @@ Please provide an improved response that addresses the analysis findings."""
         }
 
 
-def create_rag_chatbot(property_id: str = None, enable_reflection: bool = True) -> Optional[RAGChatbot]:
+def create_rag_chatbot(property_id: str = None, enable_reflection: bool = True, 
+                      vector_store_backend: str = "faiss", vector_store_config: Dict[str, Any] = None) -> Optional[RAGChatbot]:
     """Create and return a RAGChatbot instance if API is enabled."""
     if os.getenv('PERPLEXITY_API_KEY'):
-        return RAGChatbot(property_id=property_id, enable_reflection=enable_reflection)
+        return RAGChatbot(
+            property_id=property_id, 
+            enable_reflection=enable_reflection,
+            vector_store_backend=vector_store_backend,
+            vector_store_config=vector_store_config
+        )
     return None
