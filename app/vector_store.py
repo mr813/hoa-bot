@@ -9,6 +9,20 @@ from abc import ABC, abstractmethod
 
 logger = logging.getLogger(__name__)
 
+def get_secret_or_env(key: str, default: str = None) -> str:
+    """Get value from Streamlit secrets or environment variables."""
+    try:
+        import streamlit as st
+        # Try to get from Streamlit secrets first
+        if hasattr(st, 'secrets') and st.secrets:
+            return st.secrets.get(key, os.getenv(key, default))
+        else:
+            # Fallback to environment variables
+            return os.getenv(key, default)
+    except Exception:
+        # Fallback to environment variables
+        return os.getenv(key, default)
+
 class VectorStore(ABC):
     """Abstract base class for vector stores."""
     
@@ -252,10 +266,16 @@ class PineconeVectorStore(VectorStore):
             import pinecone
             from pinecone import Pinecone
             
-            # Get API key from environment
-            api_key = os.getenv('PINECONE_API_KEY')
+            # Debug logging
+            logger.info(f"🔍 Pinecone Debug - Index name: {self.index_name}")
+            logger.info(f"🔍 Pinecone Debug - Storage dir: {self.storage_dir}")
+            
+            # Get API key from environment or secrets
+            api_key = get_secret_or_env('PINECONE_API_KEY')
+            logger.info(f"🔍 Pinecone Debug - API key: {'Set' if api_key else 'Not set'}")
+            
             if not api_key:
-                raise ValueError("PINECONE_API_KEY environment variable is required for Pinecone backend")
+                raise ValueError("PINECONE_API_KEY environment variable or secret is required for Pinecone backend")
             
             # Initialize Pinecone
             pc = Pinecone(api_key=api_key)
