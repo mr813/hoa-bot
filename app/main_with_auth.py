@@ -517,12 +517,8 @@ def show_documents_page(user_manager):
                         
                         def update_progress(progress, message):
                             # Just log the progress message - it will be visible in the terminal
-                            # and we can display it in the UI later if needed
+                            # Background threads can't update Streamlit UI elements
                             print(f"📄 {uploaded_file.name}: {message} ({progress:.1f}%)")
-                            
-                            # Update the status display with the latest message
-                            with status_container:
-                                st.info(f"📄 {uploaded_file.name}: {message}")
                         
                         # Parse the PDF with progress tracking (using existing temp file)
                         document = parse_pdf(tmp_file_path, uploaded_file.name, update_progress)
@@ -547,8 +543,8 @@ def show_documents_page(user_manager):
                                 rag_chatbot.add_documents([doc_data])
                             
                             # Clear progress indicators
-                            progress_bar.empty()
-                            status_text.empty()
+                            with status_container:
+                                st.success(f"✅ Completed processing: {uploaded_file.name}")
                             
                             st.success(f"✅ Processed: {uploaded_file.name}")
                         else:
