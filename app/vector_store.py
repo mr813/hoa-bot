@@ -428,10 +428,20 @@ class PineconeVectorStore(VectorStore):
     def get_stats(self) -> Dict[str, Any]:
         """Get statistics about the Pinecone vector store."""
         try:
-            index_stats = self.index.describe_index_stats()
+            # Use local metadata count for immediate accuracy
+            total_vectors = len(self.metadata)
+            
+            # Try to get index stats for additional info
+            try:
+                index_stats = self.index.describe_index_stats()
+                index_vector_count = index_stats.total_vector_count
+            except Exception:
+                index_vector_count = total_vectors
+            
             return {
                 'backend': 'Pinecone',
-                'total_vectors': index_stats.total_vector_count,
+                'total_vectors': total_vectors,
+                'index_vector_count': index_vector_count,
                 'dimension': self.dimension,
                 'index_name': self.index_name,
                 'local_metadata_count': len(self.metadata)
