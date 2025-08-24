@@ -314,16 +314,40 @@ def extract_key_values(text: str) -> Dict[str, Any]:
     return key_values
 
 
-def validate_pdf_file(file_path: str) -> bool:
-    """Validate that file is a readable PDF."""
+def validate_pdf_file(file_path: str) -> Tuple[bool, str]:
+    """Validate that file is a readable PDF and return status with message."""
     try:
+        # Check if file exists
+        if not Path(file_path).exists():
+            return False, "File does not exist"
+        
+        # Check file size
+        file_size = Path(file_path).stat().st_size
+        if file_size == 0:
+            return False, "File is empty"
+        
+        if file_size > 100 * 1024 * 1024:  # 100MB limit
+            return False, "File size exceeds 100MB limit"
+        
+        # Try to open with PyMuPDF
         doc = fitz.open(file_path)
         page_count = len(doc)
         doc.close()
-        return page_count > 0
+        
+        if page_count == 0:
+            return False, "PDF has no pages"
+        
+        if page_count > 1000:  # Reasonable page limit
+            return False, f"PDF has too many pages ({page_count})"
+        
+        return True, f"Valid PDF with {page_count} pages"
+        
+    except fitz.FileDataError as e:
+        return False, f"PDF file is corrupted or password protected: {str(e)}"
+    except fitz.FileTypeError as e:
+        return False, f"File is not a valid PDF: {str(e)}"
     except Exception as e:
-        print(f"PDF validation failed: {e}")
-        return False
+        return False, f"PDF validation failed: {str(e)}"
 
 
 def get_pdf_info(file_path: str) -> Dict[str, Any]:

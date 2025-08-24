@@ -354,6 +354,19 @@ def show_documents_page():
                         tmp_file.write(uploaded_file.getvalue())
                         tmp_file_path = tmp_file.name
                     
+                    # Validate PDF first
+                    is_valid, validation_message = validate_pdf_file(tmp_file_path)
+                    if not is_valid:
+                        st.error(f"PDF validation failed: {validation_message}")
+                        # Clean up temporary file
+                        try:
+                            os.unlink(tmp_file_path)
+                        except:
+                            pass
+                        continue
+                    
+                    st.success(f"✅ PDF validated: {validation_message}")
+                    
                     # Progress tracking
                     progress_bar = st.progress(0)
                     status_text = st.empty()
