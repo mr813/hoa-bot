@@ -349,10 +349,15 @@ def show_documents_page():
             
             if st.button(f"Process {uploaded_file.name}", key=f"process_{uploaded_file.name}"):
                 try:
+                    st.info(f"🔄 Starting processing for: {uploaded_file.name}")
+                    
                     # Create temporary file
                     with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
                         tmp_file.write(uploaded_file.getvalue())
                         tmp_file_path = tmp_file.name
+                    
+                    st.info(f"📁 Temporary file created: {tmp_file_path}")
+                    st.info(f"📊 File size: {len(uploaded_file.getvalue()) / (1024*1024):.2f} MB")
                     
                     # Validate PDF first
                     is_valid, validation_message = validate_pdf_file(tmp_file_path)
@@ -378,22 +383,32 @@ def show_documents_page():
                     
                     # Parse PDF
                     try:
+                        st.info(f"📖 Starting PDF parsing...")
                         document = parse_pdf(tmp_file_path, uploaded_file.name, progress_callback)
                         text_content = document.get_all_text()
                         
+                        st.info(f"✅ PDF parsing completed")
+                        st.info(f"📊 Extracted text length: {len(text_content)} characters")
+                        st.info(f"📄 Pages processed: {len(document.pages)}")
+                        st.info(f"🔍 OCR used: {document.ocr_used}")
+                        
                         # Clean up temporary file
                         os.unlink(tmp_file_path)
+                        st.info(f"🗑️ Temporary file cleaned up")
                         
                         if text_content:
                         # Create RAG chatbot for this property
+                        st.info(f"🤖 Creating RAG chatbot for property: {st.session_state.selected_property}")
                         rag_chatbot = create_rag_chatbot(st.session_state.selected_property)
                         
                         # Add document to RAG system
+                        st.info(f"📚 Adding document to RAG system...")
                         rag_chatbot.add_documents([{
                             'text': text_content,
                             'source_document': uploaded_file.name,
                             'document_type': doc_type
                         }])
+                        st.info(f"✅ Document added to RAG system")
                         
                         # Update session state
                         doc_data = {
@@ -414,13 +429,17 @@ def show_documents_page():
                         st.error(f"Failed to extract text from {uploaded_file.name}")
                         
                     except Exception as e:
-                        st.error(f"Error processing {uploaded_file.name}: {str(e)}")
+                        st.error(f"❌ Error processing {uploaded_file.name}: {str(e)}")
+                        st.error(f"📋 Error details: {type(e).__name__}")
+                        import traceback
+                        st.error(f"📋 Full traceback: {traceback.format_exc()}")
                         # Clean up temporary file if it still exists
                         try:
                             if os.path.exists(tmp_file_path):
                                 os.unlink(tmp_file_path)
-                        except:
-                            pass
+                                st.info(f"🗑️ Cleaned up temporary file after error")
+                        except Exception as cleanup_error:
+                            st.warning(f"⚠️ Failed to clean up temporary file: {cleanup_error}")
     
     # Document summary
     if st.session_state.documents_processed:

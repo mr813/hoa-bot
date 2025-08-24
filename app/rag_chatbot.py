@@ -286,17 +286,26 @@ class RAGChatbot:
         
     def add_documents(self, documents: List[Dict[str, Any]]):
         """Add documents to the vector store."""
+        print(f"🔄 Starting add_documents with {len(documents)} documents")
+        
         if not documents:
+            print("⚠️ No documents provided to add_documents")
             return
             
         # Extract text chunks from documents
         chunks = []
         metadata = []
         
-        for doc in documents:
+        for doc_idx, doc in enumerate(documents):
+            print(f"📄 Processing document {doc_idx + 1}/{len(documents)}: {doc.get('name', 'Unknown')}")
+            
             if 'text' in doc and doc['text']:
+                print(f"📊 Document text length: {len(doc['text'])} characters")
+                
                 # Split text into chunks (token-based approach)
+                print(f"✂️ Splitting text into chunks...")
                 text_chunks = self._split_text_into_chunks(doc['text'], max_tokens=400, overlap=50)
+                print(f"✅ Created {len(text_chunks)} chunks")
                 
                 for i, chunk in enumerate(text_chunks):
                     chunks.append(chunk)
@@ -307,31 +316,43 @@ class RAGChatbot:
                         'total_chunks': len(text_chunks),
                         'source_document': doc.get('name', 'Unknown')
                     })
+            else:
+                print(f"⚠️ Document {doc_idx + 1} has no text content")
         
         if chunks:
+            print(f"📊 Total chunks to process: {len(chunks)}")
+            
             # Check if embedding model is available
             if self.embedding_model is None:
+                print("❌ Embedding model not available")
                 return {
                     'success': False,
                     'message': 'Embedding model not available. Please restart the application.',
                     'chunks_added': 0
                 }
             
+            print(f"🤖 Generating embeddings for {len(chunks)} chunks...")
             # Generate embeddings with model type handling
             embeddings = self._generate_embeddings(chunks)
+            print(f"✅ Embeddings generated, shape: {embeddings.shape}")
             
             # Add to FAISS index
+            print(f"📚 Adding embeddings to FAISS index...")
             if self.index.ntotal == 0:
                 self.index.add(embeddings.astype('float32'))
             else:
                 self.index.add(embeddings.astype('float32'))
+            print(f"✅ FAISS index updated, total vectors: {self.index.ntotal}")
             
             # Store documents and metadata
+            print(f"💾 Storing {len(chunks)} chunks and metadata in memory...")
             self.documents.extend(chunks)
             self.document_metadata.extend(metadata)
             
             # Save to disk
+            print(f"💾 Saving data to disk...")
             self._save_persistent_data()
+            print(f"✅ Document processing completed successfully")
     
     def remove_document(self, document_name: str) -> Dict[str, Any]:
         """
