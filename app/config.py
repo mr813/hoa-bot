@@ -25,6 +25,13 @@ def get_vector_store_config() -> Dict[str, Any]:
     """Get vector store configuration based on environment variables."""
     backend = VECTOR_STORE_CONFIG['default_backend']
     
+    # Debug logging
+    print(f"🔍 Config Debug - VECTOR_STORE_BACKEND: {os.getenv('VECTOR_STORE_BACKEND', 'Not set')}")
+    print(f"🔍 Config Debug - PINECONE_API_KEY: {'Set' if os.getenv('PINECONE_API_KEY') else 'Not set'}")
+    print(f"🔍 Config Debug - PINECONE_INDEX_NAME: {os.getenv('PINECONE_INDEX_NAME', 'Not set')}")
+    print(f"🔍 Config Debug - PINECONE_ENVIRONMENT: {os.getenv('PINECONE_ENVIRONMENT', 'Not set')}")
+    print(f"🔍 Config Debug - Selected backend: {backend}")
+    
     if backend == 'pinecone':
         # Validate Pinecone configuration
         if not os.getenv('PINECONE_API_KEY'):
