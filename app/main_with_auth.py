@@ -491,9 +491,17 @@ def show_documents_page(user_manager):
                 # Process button
                 if st.button(f"Process {uploaded_file.name}", key=f"process_{uploaded_file.name}"):
                     try:
+                        # Create temporary file for validation
+                        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+                            tmp_file.write(uploaded_file.getvalue())
+                            tmp_file_path = tmp_file.name
+                        
                         # Validate file
-                        if not validate_pdf_file(uploaded_file):
-                            st.error(f"Invalid PDF file: {uploaded_file.name}")
+                        is_valid, validation_message = validate_pdf_file(tmp_file_path)
+                        if not is_valid:
+                            st.error(f"Invalid PDF file: {uploaded_file.name} - {validation_message}")
+                            # Clean up temp file
+                            os.unlink(tmp_file_path)
                             continue
                         
                         # Create progress bar and status for this file
@@ -504,12 +512,7 @@ def show_documents_page(user_manager):
                             progress_bar.progress(progress / 100)
                             status_text.text(f"📄 {uploaded_file.name}: {message}")
                         
-                        # Parse PDF
-                        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-                            tmp_file.write(uploaded_file.getvalue())
-                            tmp_file_path = tmp_file.name
-                        
-                        # Parse the PDF with progress tracking
+                        # Parse the PDF with progress tracking (using existing temp file)
                         document = parse_pdf(tmp_file_path, uploaded_file.name, update_progress)
                         
                         # Clean up temp file
