@@ -140,8 +140,7 @@ class RAGChatbot:
             self.vector_store_backend = "faiss"
             self.vector_store = create_vector_store(
                 backend="faiss",
-                storage_dir=str(self.storage_dir),
-                dimension=self.dimension
+                storage_dir=str(self.storage_dir)
             )
         
         # Document storage

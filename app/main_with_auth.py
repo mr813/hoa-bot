@@ -510,30 +510,30 @@ def show_documents_page(user_manager):
                             os.unlink(tmp_file_path)
                             continue
                         
-                        # Create progress bar and status for this file (outside button handler)
+                        # Create progress bar and status for this file
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+                        
+                        # Store progress state in session
                         progress_key = f"progress_{uploaded_file.name}"
-                        status_key = f"status_{uploaded_file.name}"
-                        
-                        if progress_key not in st.session_state:
-                            st.session_state[progress_key] = st.progress(0)
-                        if status_key not in st.session_state:
-                            st.session_state[status_key] = st.empty()
-                        
-                        progress_bar = st.session_state[progress_key]
-                        status_text = st.session_state[status_key]
+                        st.session_state[progress_key] = {
+                            'progress': 0,
+                            'message': 'Starting...',
+                            'bar': progress_bar,
+                            'status': status_text
+                        }
                         
                         def update_progress(progress, message):
+                            # Update session state
+                            st.session_state[progress_key]['progress'] = progress
+                            st.session_state[progress_key]['message'] = message
+                            
+                            # Update UI elements
                             try:
-                                # Check if we're in the main thread (Streamlit context)
-                                import streamlit as st
-                                if hasattr(st, '_is_running_with_streamlit') and st._is_running_with_streamlit:
-                                    progress_bar.progress(progress / 100)
-                                    status_text.text(f"📄 {uploaded_file.name}: {message}")
-                                else:
-                                    # We're in a background thread, just log the progress
-                                    print(f"📄 {uploaded_file.name}: {message} ({progress:.1f}%)")
+                                progress_bar.progress(progress / 100)
+                                status_text.text(f"📄 {uploaded_file.name}: {message}")
                             except Exception as e:
-                                # If any Streamlit operation fails, just log the progress
+                                # If UI update fails, just log the progress
                                 print(f"📄 {uploaded_file.name}: {message} ({progress:.1f}%)")
                                 print(f"Progress update error (can be ignored): {e}")
                         
