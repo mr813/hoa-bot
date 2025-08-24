@@ -23,18 +23,11 @@ project_root = Path(__file__).parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-# Import app modules
-try:
-    from app.parsing import parse_pdf, validate_pdf_file
-    from app.rag_chatbot import create_rag_chatbot
-    from app.user_management import create_user_manager, ensure_property_storage
-    from app.utils import clean_text, truncate_text
-except (ImportError, OSError):
-    # Fallback to relative imports if absolute imports fail
-    from .parsing import parse_pdf, validate_pdf_file
-    from .rag_chatbot import create_rag_chatbot
-    from .user_management import create_user_manager, ensure_property_storage
-    from .utils import clean_text, truncate_text
+# Import app modules - use direct imports for Streamlit Cloud compatibility
+from app.parsing import parse_pdf, validate_pdf_file
+from app.rag_chatbot import create_rag_chatbot
+from app.user_management import create_user_manager, ensure_property_storage
+from app.utils import clean_text, truncate_text
 
 
 def main():

@@ -1,128 +1,136 @@
-# HOA Auditor
+# HOA Bot - Florida Condominium Compliance Assistant
 
-A minimal, production-ready MVP Streamlit app that helps Florida condominium owners audit their association rules against their governing documents and Chapter 718, Florida Statutes.
-
-## Overview
-
-HOA Auditor analyzes uploaded PDF documents (Declaration, Bylaws, Rules/Policies) and checks them against Florida Chapter 718 requirements. The app identifies potential conflicts, compliance issues, and provides actionable findings with citations.
+A comprehensive Streamlit application that helps Florida condominium owners audit their association rules against governing documents and Chapter 718, Florida Statutes.
 
 ## Features
 
-- **Document Upload & Parsing**: Upload up to 5 PDFs (~300 pages total)
-- **Auto-classification**: Automatically detects document types (declaration/bylaws/rules/other)
-- **Florida Chapter 718 Compliance**: Comprehensive checklist against state statutes
-- **Findings Engine**: Identifies hierarchy conflicts, rental/transfer issues, fines/suspensions, meetings/notice, collections, budgets/reserves, elections/recall
-- **Research Assistance**: Optional Perplexity API integration for enhanced legal research
-- **Reporting**: Generate findings reports and draft board letters
-- **Export Options**: Download reports as JSON, PDF, or Markdown
+### 🔐 User Management
+- Secure user authentication with email registration
+- Password management and account security
+- Multi-user support with isolated data
 
-## Installation
+### 🏠 Property Management
+- Add and manage multiple properties
+- Property type classification (Condo/House)
+- Interactive maps with geocoding
+- Property-specific document storage
 
-### Prerequisites
+### 📄 Document Processing
+- PDF upload with OCR capabilities
+- Document type classification (HOA Bylaws vs Other)
+- Intelligent text extraction and chunking
+- Persistent storage with FAISS vector database
 
-1. **Python 3.10+**
-2. **Tesseract OCR** (for PDF text extraction fallback):
-   - macOS: `brew install tesseract`
-   - Ubuntu: `sudo apt-get install tesseract-ocr`
-   - Windows: Download from [GitHub releases](https://github.com/UB-Mannheim/tesseract/wiki)
+### 🤖 AI-Powered Analysis
+- RAG (Retrieval Augmented Generation) chatbot
+- Conflict detection between rules and bylaws
+- Florida condominium law integration (Chapter 718)
+- Multi-step reflection for improved responses
+- Perplexity API integration for legal research
 
-3. **Poppler** (for PDF processing):
-   - macOS: `brew install poppler`
-   - Ubuntu: `sudo apt-get install poppler-utils`
-   - Windows: Download from [poppler releases](https://github.com/oschwartz10612/poppler-windows/releases)
+### 📊 Reporting & Management
+- Document removal and storage management
+- Chat history and conversation tracking
+- Settings and configuration management
 
-### Setup
+## Quick Start
 
-1. Clone or download this repository
-2. Install dependencies:
+### Local Development
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/mr813/hoa-bot.git
+   cd hoa-bot
+   ```
+
+2. **Create virtual environment**
+   ```bash
+   python3 -m venv hoa_auditor_env
+   source hoa_auditor_env/bin/activate
+   ```
+
+3. **Install dependencies**
    ```bash
    pip install -r requirements.txt
    ```
 
-3. (Optional) Set up Perplexity API for research assistance:
+4. **Install system dependencies**
    ```bash
-   export PERPLEXITY_API_KEY="your_api_key_here"
+   # macOS
+   brew install poppler tesseract
+   
+   # Ubuntu/Debian
+   sudo apt-get install poppler-utils tesseract-ocr libtesseract-dev
    ```
+
+5. **Set up environment variables**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your API keys and email settings
+   ```
+
+6. **Run the application**
+   ```bash
+   streamlit run app/main_with_auth.py
+   ```
+
+### Streamlit Cloud Deployment
+
+1. **Fork this repository** to your GitHub account
+2. **Connect to Streamlit Cloud** and deploy from the repository
+3. **Set environment variables** in Streamlit Cloud dashboard
+4. **Access your deployed app** at the provided URL
+
+## Environment Variables
+
+Create a `.env` file with the following variables:
+
+```env
+# Perplexity API for legal research
+PERPLEXITY_API_KEY=your_perplexity_api_key
+
+# Email settings for user registration
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=your_email@gmail.com
+SMTP_PASSWORD=your_app_password
+FROM_EMAIL=your_email@gmail.com
+```
 
 ## Usage
 
-1. Start the app:
-   ```bash
-   streamlit run app/main.py
-   ```
+1. **Register/Login**: Create an account or sign in
+2. **Add Properties**: Enter property details and addresses
+3. **Upload Documents**: Upload HOA bylaws and other documents
+4. **Chat & Analyze**: Ask questions about conflicts and compliance
+5. **Review Findings**: Get detailed analysis of rule discrepancies
 
-2. Upload your HOA documents (Declaration, Bylaws, Rules/Policies)
+## Technology Stack
 
-3. Review the document classification and structure
+- **Frontend**: Streamlit
+- **Backend**: Python 3.10+
+- **AI/ML**: FAISS, Sentence Transformers, Perplexity API
+- **Document Processing**: PyMuPDF, Tesseract OCR
+- **Authentication**: Streamlit Authenticator, bcrypt
+- **Maps**: Folium, Geocoder
+- **Storage**: JSON, YAML, FAISS vectors
 
-4. Run the audit to generate findings
+## Contributing
 
-5. (Optional) Enable research assistance for enhanced analysis
-
-6. Download reports and draft board letters
-
-## Optional Research Setup
-
-To enable AI-powered research assistance:
-
-1. Get a Perplexity API key from [perplexity.ai](https://www.perplexity.ai/)
-2. Set the environment variable:
-   ```bash
-   export PERPLEXITY_API_KEY="your_api_key_here"
-   ```
-3. Restart the app - research features will automatically appear
-
-The research integration provides:
-- Statute section summaries
-- Hierarchy principle explanations with Florida case law
-- Enhanced findings with sourced information
-- Rate-limited API calls with fallback handling
-
-## Project Structure
-
-```
-hoa_compliance_manager/
-├── app/
-│   ├── main.py              # Main Streamlit app
-│   ├── parsing.py           # PDF parsing and OCR
-│   ├── structure.py         # Document structure detection
-│   ├── checklist.py         # Florida Chapter 718 compliance checks
-│   ├── findings.py          # Findings engine and normalization
-│   ├── reporting.py         # Report and letter generation
-│   ├── ui_components.py     # UI components and layouts
-│   ├── research.py          # Perplexity API integration
-│   └── utils.py             # Utility functions
-├── assets/
-│   └── state_pack_fl_718.json  # Florida Chapter 718 checklist
-├── templates/
-│   ├── board_letter.md.j2   # Board letter template
-│   └── report.md.j2         # Report template
-├── tests/                   # Test files
-├── requirements.txt         # Python dependencies
-├── .flake8                  # Linting configuration
-└── README.md               # This file
-```
-
-## Testing
-
-Run tests with:
-```bash
-python -m pytest tests/
-```
-
-## Disclaimers
-
-**IMPORTANT**: This application is for educational purposes only and does not constitute legal advice. 
-
-- All findings are preliminary and should be reviewed by qualified legal counsel
-- The app analyzes documents against Florida Chapter 718 but may not capture all legal nuances
-- Research assistance is informational only and should not be relied upon for legal decisions
-- Users should consult with attorneys for specific legal advice regarding their HOA compliance
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
 
 ## License
 
-MIT License - see LICENSE file for details.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Support
 
-For issues or questions, please review the code comments and test files for implementation details.
+For issues and questions, please open an issue on GitHub or contact the development team.
+
+---
+
+**Note**: This application is designed to assist with legal research and compliance analysis but does not provide legal advice. Always consult with qualified legal professionals for specific legal matters.
