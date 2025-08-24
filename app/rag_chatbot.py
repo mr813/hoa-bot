@@ -623,7 +623,7 @@ class RAGChatbot:
         for i, (score, metadata) in enumerate(zip(scores, metadata_list)):
             if metadata and 'chunk_index' in metadata:
                 # Find the corresponding document content
-                chunk_idx = metadata.get('chunk_index', 0)
+                chunk_idx = int(metadata.get('chunk_index', 0))  # Convert to integer
                 if chunk_idx < len(self.documents):
                     chunk_data = {
                         'content': self.documents[chunk_idx],
