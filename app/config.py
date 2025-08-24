@@ -10,13 +10,11 @@ VECTOR_STORE_CONFIG = {
     
     # FAISS Configuration
     'faiss': {
-        'dimension': 384,  # Embedding dimension
         'metric': 'cosine',  # Similarity metric
     },
     
     # Pinecone Configuration
     'pinecone': {
-        'dimension': 384,  # Embedding dimension
         'index_name': os.getenv('PINECONE_INDEX_NAME', 'hoa-bot'),
         'metric': 'cosine',  # Similarity metric
         'environment': os.getenv('PINECONE_ENVIRONMENT', 'us-east1-aws'),  # Pinecone environment
