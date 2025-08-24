@@ -173,8 +173,18 @@ def extract_text_with_ocr(pdf_path: str, progress_callback=None) -> List[str]:
     try:
         # First, get the total number of pages without loading all images
         logger.info(f"📄 Getting page count...")
-        page_count = len(convert_from_path(pdf_path, dpi=300, first_page=1, last_page=1))
-        logger.info(f"📄 Total pages detected: {page_count}")
+        try:
+            page_count = len(convert_from_path(pdf_path, dpi=300, first_page=1, last_page=1))
+            logger.info(f"📄 Total pages detected: {page_count}")
+        except Exception as e:
+            logger.error(f"❌ Failed to get page count: {e}")
+            # Try with lower DPI if page count detection fails
+            try:
+                page_count = len(convert_from_path(pdf_path, dpi=150, first_page=1, last_page=1))
+                logger.info(f"📄 Total pages detected (low DPI): {page_count}")
+            except Exception as e2:
+                logger.error(f"❌ Failed to get page count even with low DPI: {e2}")
+                raise Exception(f"Could not process PDF: {e2}")
         
         # Adjust DPI based on page count to prevent memory issues
         if page_count > 100:
@@ -279,10 +289,24 @@ def extract_text_with_ocr(pdf_path: str, progress_callback=None) -> List[str]:
 
 
 def should_use_ocr(pages_text: List[str]) -> bool:
-    """Determine if OCR should be used based on text density."""
+    """Determine if OCR should be used based on text density and system resources."""
     if not pages_text:
         logger.info("📄 No text extracted, will use OCR")
         return True
+    
+    # Check system memory before deciding on OCR
+    try:
+        import psutil
+        memory = psutil.virtual_memory()
+        memory_available_gb = memory.available / (1024**3)
+        logger.info(f"💾 Available memory: {memory_available_gb:.1f} GB")
+        
+        # Skip OCR if memory is low (less than 1GB available)
+        if memory_available_gb < 1.0:
+            logger.warning(f"⚠️ Low memory detected ({memory_available_gb:.1f} GB), skipping OCR")
+            return False
+    except Exception as e:
+        logger.warning(f"⚠️ Could not check memory: {e}")
     
     # Calculate average text density
     total_chars = sum(len(text) for text in pages_text)
@@ -316,38 +340,43 @@ def parse_pdf(file_path: str, file_name: str, progress_callback=None) -> Documen
             logger.info(f"🔍 Low text density detected for {file_name}, switching to OCR...")
             print(f"Low text density detected for {file_name}, using OCR...")
             
-            # Add timeout for OCR processing to prevent hanging
-            import signal
+            # Add timeout for OCR processing to prevent hanging (thread-safe approach)
+            import threading
+            import time
             
-            def timeout_handler(signum, frame):
-                raise TimeoutError("OCR processing timed out")
+            ocr_result = []
+            ocr_error = []
+            ocr_completed = threading.Event()
             
-            # Set timeout to 10 minutes for OCR
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(600)  # 10 minutes timeout
+            def ocr_worker():
+                try:
+                    result = extract_text_with_ocr(file_path, progress_callback)
+                    ocr_result.append(result)
+                except Exception as e:
+                    ocr_error.append(e)
+                finally:
+                    ocr_completed.set()
             
-            try:
-                ocr_pages_text = extract_text_with_ocr(file_path, progress_callback)
-                signal.alarm(0)  # Cancel timeout
-                
-                if ocr_pages_text:
-                    pages_text = ocr_pages_text
+            # Start OCR in a separate thread
+            ocr_thread = threading.Thread(target=ocr_worker, daemon=True)
+            ocr_thread.start()
+            
+            # Wait for completion with timeout (10 minutes)
+            if ocr_completed.wait(timeout=600):  # 10 minutes timeout
+                if ocr_error:
+                    logger.error(f"❌ OCR processing failed for {file_name}: {ocr_error[0]}")
+                    print(f"OCR processing failed for {file_name}, using PyMuPDF text")
+                elif ocr_result and ocr_result[0]:
+                    pages_text = ocr_result[0]
                     document.ocr_used = True
                     logger.info(f"✅ OCR completed successfully for {file_name}")
                     print(f"OCR completed for {file_name}")
                 else:
                     logger.warning(f"⚠️ OCR failed for {file_name}, falling back to PyMuPDF text")
                     print(f"OCR failed for {file_name}, using PyMuPDF text")
-                    
-            except TimeoutError:
-                signal.alarm(0)  # Cancel timeout
+            else:
                 logger.error(f"❌ OCR processing timed out for {file_name}")
                 print(f"OCR processing timed out for {file_name}, using PyMuPDF text")
-                
-            except Exception as ocr_error:
-                signal.alarm(0)  # Cancel timeout
-                logger.error(f"❌ OCR processing failed for {file_name}: {ocr_error}")
-                print(f"OCR processing failed for {file_name}, using PyMuPDF text")
                 
         elif should_use_ocr(pages_text) and not (OCR_AVAILABLE and POPPLER_AVAILABLE and TESSERACT_AVAILABLE):
             logger.warning(f"⚠️ Low text density detected for {file_name}, but OCR not available. Using PyMuPDF text.")
