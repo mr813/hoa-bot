@@ -510,41 +510,19 @@ def show_documents_page(user_manager):
                             os.unlink(tmp_file_path)
                             continue
                         
-                        # Progress tracking variables
-                        progress_key = f"progress_{uploaded_file.name}"
-                        
-                        # Create progress bar and status for this file
-                        progress_bar = st.progress(0)
-                        status_text = st.empty()
-                        
-                        # Progress display section that updates from session state
-                        progress_container = st.container()
-                        
-                        # Initialize progress in session state
-                        if progress_key not in st.session_state:
-                            st.session_state[progress_key] = {
-                                'progress': 0,
-                                'message': 'Starting...',
-                                'timestamp': time.time()
-                            }
-                        
-                        # Update progress bar from session state
-                        with progress_container:
-                            if progress_key in st.session_state:
-                                progress_data = st.session_state[progress_key]
-                                progress_bar.progress(progress_data['progress'] / 100)
-                                status_text.text(f"📄 {uploaded_file.name}: {progress_data['message']}")
+                        # Create a simple status display
+                        status_container = st.container()
+                        with status_container:
+                            st.info(f"🔄 Starting to process: {uploaded_file.name}")
                         
                         def update_progress(progress, message):
-                            # Store progress in session state for UI updates
-                            st.session_state[progress_key] = {
-                                'progress': progress,
-                                'message': message,
-                                'timestamp': time.time()
-                            }
-                            
-                            # Log progress for debugging
+                            # Just log the progress message - it will be visible in the terminal
+                            # and we can display it in the UI later if needed
                             print(f"📄 {uploaded_file.name}: {message} ({progress:.1f}%)")
+                            
+                            # Update the status display with the latest message
+                            with status_container:
+                                st.info(f"📄 {uploaded_file.name}: {message}")
                         
                         # Parse the PDF with progress tracking (using existing temp file)
                         document = parse_pdf(tmp_file_path, uploaded_file.name, update_progress)
