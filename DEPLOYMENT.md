@@ -8,15 +8,7 @@ Your HOA Bot is now ready for Streamlit Community Cloud deployment with pre-conf
 
 The following environment variables are pre-configured in `config.py` and will be automatically loaded:
 
-### Perplexity API
-- **PERPLEXITY_API_KEY**: `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`
 
-### SMTP Email Settings
-- **SMTP_SERVER**: `smtp.gmail.com`
-- **SMTP_PORT**: `587`
-- **SMTP_USERNAME**: `gobulls1026@gmail.com`
-- **SMTP_PASSWORD**: `ohkm phsc fcrq lllc`
-- **FROM_EMAIL**: `gobulls1026@gmail.com`
 
 ## Deployment Steps
 
