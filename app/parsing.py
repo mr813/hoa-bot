@@ -342,7 +342,6 @@ def parse_pdf(file_path: str, file_name: str, progress_callback=None) -> Documen
             
             # Add timeout for OCR processing to prevent hanging (thread-safe approach)
             import threading
-            import time
             
             ocr_result = []
             ocr_error = []
