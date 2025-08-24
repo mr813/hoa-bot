@@ -261,12 +261,19 @@ class PineconeVectorStore(VectorStore):
             pc = Pinecone(api_key=api_key)
             
             # Check if index exists, create if not
-            if self.index_name not in pc.list_indexes().names():
+            existing_indexes = pc.list_indexes()
+            if self.index_name not in [idx.name for idx in existing_indexes]:
                 logger.info(f"🔧 Creating Pinecone index: {self.index_name}")
                 pc.create_index(
                     name=self.index_name,
                     dimension=dimension,
-                    metric='cosine'
+                    metric='cosine',
+                    spec={
+                        'serverless': {
+                            'cloud': 'aws',
+                            'region': 'us-east-1'
+                        }
+                    }
                 )
                 # Wait for index to be ready
                 import time
