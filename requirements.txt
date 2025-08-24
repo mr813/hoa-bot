@@ -1,0 +1,17 @@
+streamlit>=1.28.0
+PyMuPDF>=1.23.0
+pdf2image>=1.16.0
+pytesseract>=0.3.10
+Pillow>=10.0.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+flake8>=6.0.0
+faiss-cpu>=1.7.4
+sentence-transformers>=2.2.0
+numpy>=1.24.0
+streamlit-authenticator>=0.4.2
+bcrypt>=4.0.1
+PyYAML>=6.0
+folium>=0.20.0
+streamlit-folium>=0.25.1
+geocoder>=1.38.1

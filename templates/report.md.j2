@@ -1,0 +1,167 @@
+# HOA Compliance Audit Report
+
+**Generated:** {{ generated_date }}
+
+---
+
+## Executive Summary
+
+This report presents the findings of a compliance audit of your condominium association's governing documents against Florida Chapter 718 requirements.
+
+### Key Statistics
+
+- **Total Findings:** {{ summary.total_findings }}
+{% if summary.severity_counts %}
+- **Critical Issues:** {{ summary.severity_counts.get('likely_conflict', 0) }}
+- **Needs Counsel:** {{ summary.severity_counts.get('needs_counsel', 0) }}
+- **Likely Compliant:** {{ summary.severity_counts.get('likely_compliant', 0) }}
+- **Informational:** {{ summary.severity_counts.get('info', 0) }}
+{% endif %}
+{% if summary.ai_aided_count %}
+- **AI-Enhanced Research:** {{ summary.ai_aided_count }} findings
+{% endif %}
+
+---
+
+## Top Findings
+
+{% for finding in top_findings %}
+### {{ loop.index }}. {{ finding.description }}
+
+**Severity:** {{ finding.severity.replace('_', ' ').title() }}
+{% if finding.ai_aided %} <span class="ai-badge">AI-aided research</span>{% endif %}
+
+**Evidence:** {{ finding.evidence_snippet }}
+
+**File:** {{ finding.file_name }} ({{ finding.doc_type }})
+
+{% if finding.statute_citations %}
+**Statute References:**
+{% for citation in finding.statute_citations %}
+- {{ format_statute_ref(citation.section) }} - {{ citation.note }}
+{% endfor %}
+{% endif %}
+
+**Suggestion:** {{ finding.suggestion }}
+
+{% if finding.ai_research and finding.ai_research.summary_bullets %}
+**Research Insights:**
+{% for bullet in finding.ai_research.summary_bullets %}
+- {{ bullet }}
+{% endfor %}
+{% endif %}
+
+---
+{% endfor %}
+
+## Findings by Severity
+
+### Critical Issues (Likely Conflicts)
+{% if by_severity.likely_conflict %}
+{% for finding in by_severity.likely_conflict %}
+- **{{ finding.description }}** - {{ finding.file_name }}
+{% endfor %}
+{% else %}
+No critical issues identified.
+{% endif %}
+
+### Issues Requiring Legal Counsel
+{% if by_severity.needs_counsel %}
+{% for finding in by_severity.needs_counsel %}
+- **{{ finding.description }}** - {{ finding.file_name }}
+{% endfor %}
+{% else %}
+No issues requiring legal counsel identified.
+{% endif %}
+
+### Likely Compliant Items
+{% if by_severity.likely_compliant %}
+{% for finding in by_severity.likely_compliant %}
+- **{{ finding.description }}** - {{ finding.file_name }}
+{% endfor %}
+{% else %}
+No likely compliant items identified.
+{% endif %}
+
+### Informational Items
+{% if by_severity.info %}
+{% for finding in by_severity.info %}
+- **{{ finding.description }}** - {{ finding.file_name }}
+{% endfor %}
+{% else %}
+No informational items identified.
+{% endif %}
+
+## Findings by Topic
+
+{% for topic, topic_findings in by_topic.items() %}
+### {{ topic.replace('_', ' ').title() }}
+{% for finding in topic_findings %}
+- **{{ finding.description }}** ({{ finding.severity.replace('_', ' ').title() }}) - {{ finding.file_name }}
+{% endfor %}
+
+{% endfor %}
+
+## Detailed Findings
+
+{% for finding in findings %}
+### Finding {{ loop.index }}: {{ finding.description }}
+
+**Severity:** {{ finding.severity.replace('_', ' ').title() }}
+{% if finding.ai_aided %} <span class="ai-badge">AI-aided research</span>{% endif %}
+
+**Evidence:** {{ finding.evidence }}
+
+**File:** {{ finding.file_name }} ({{ finding.doc_type }})
+
+{% if finding.user_doc_citations %}
+**Document Citations:**
+{% for citation in finding.user_doc_citations %}
+- {{ citation.file }} - {{ citation.section_title }}
+{% if citation.page %}(Page {{ citation.page }}){% endif %}
+{% endfor %}
+{% endif %}
+
+{% if finding.statute_citations %}
+**Statute Citations:**
+{% for citation in finding.statute_citations %}
+- {{ format_statute_ref(citation.section) }} - {{ citation.note }}
+{% endfor %}
+{% endif %}
+
+**Suggestion:** {{ finding.suggestion }}
+
+{% if finding.ai_research and finding.ai_research.summary_bullets %}
+**Research Insights:**
+{% for bullet in finding.ai_research.summary_bullets %}
+- {{ bullet }}
+{% endfor %}
+
+{% if finding.ai_research.sources %}
+**Sources:**
+{% for source in finding.ai_research.sources %}
+- [{{ source.title }}]({{ source.url }})
+{% endfor %}
+{% endif %}
+{% endif %}
+
+---
+{% endfor %}
+
+## Recommendations
+
+Based on the findings of this audit, we recommend:
+
+1. **Review Critical Issues First:** Address all findings marked as "likely conflicts" with priority
+2. **Consult Legal Counsel:** For all issues marked as "needs counsel," seek professional legal advice
+3. **Document Updates:** Consider updating governing documents to address identified compliance gaps
+4. **Regular Audits:** Implement regular compliance audits to maintain adherence to Florida law
+5. **Board Education:** Provide board members with training on Florida Chapter 718 requirements
+
+## Disclaimer
+
+**IMPORTANT:** This report is for educational purposes only and does not constitute legal advice. All findings should be reviewed by qualified legal counsel before taking any action. The analysis is based on the documents provided and current understanding of Florida Chapter 718, but may not capture all legal nuances or recent changes in the law.
+
+---
+
+*Report generated by HOA Auditor v1.0.0*
