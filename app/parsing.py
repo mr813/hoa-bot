@@ -6,12 +6,24 @@ import re
 import logging
 import time
 import traceback
+import psutil
+import os
 from typing import Dict, List, Any, Optional, Tuple
 from pathlib import Path
 
 # Configure logging for debugging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def log_memory_usage(stage: str):
+    """Log current memory usage for debugging."""
+    try:
+        process = psutil.Process(os.getpid())
+        memory_info = process.memory_info()
+        memory_mb = memory_info.rss / 1024 / 1024
+        logger.info(f"💾 Memory usage at {stage}: {memory_mb:.1f} MB")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not log memory usage: {e}")
 
 # Check for OCR dependencies with better error handling
 try:
@@ -138,8 +150,9 @@ def extract_text_with_pymupdf(pdf_path: str) -> Tuple[List[str], Dict[str, Any]]
 
 
 def extract_text_with_ocr(pdf_path: str, progress_callback=None) -> List[str]:
-    """Extract text from PDF using OCR (fallback method)."""
+    """Extract text from PDF using OCR (fallback method) with memory-efficient processing."""
     logger.info(f"🔄 Starting OCR text extraction for: {pdf_path}")
+    log_memory_usage("OCR start")
     start_time = time.time()
     
     if not OCR_AVAILABLE:
@@ -158,40 +171,101 @@ def extract_text_with_ocr(pdf_path: str, progress_callback=None) -> List[str]:
         return []
     
     try:
-        logger.info(f"🖼️ Converting PDF to images with DPI=300...")
-        # Convert PDF to images
-        images = convert_from_path(pdf_path, dpi=300)
-        pages_text = []
-        total_pages = len(images)
-        logger.info(f"📄 Converted {total_pages} pages to images")
+        # First, get the total number of pages without loading all images
+        logger.info(f"📄 Getting page count...")
+        page_count = len(convert_from_path(pdf_path, dpi=300, first_page=1, last_page=1))
+        logger.info(f"📄 Total pages detected: {page_count}")
         
-        for i, image in enumerate(images):
+        # Adjust DPI based on page count to prevent memory issues
+        if page_count > 100:
+            dpi = 200  # Lower DPI for very large documents
+            logger.info(f"📊 Large document detected ({page_count} pages), using DPI=200")
+        elif page_count > 50:
+            dpi = 250  # Medium DPI for medium documents
+            logger.info(f"📊 Medium document detected ({page_count} pages), using DPI=250")
+        else:
+            dpi = 300  # Full DPI for small documents
+            logger.info(f"📊 Small document detected ({page_count} pages), using DPI=300")
+        
+        # Adjust batch size based on page count
+        if page_count > 200:
+            batch_size = 3  # Smaller batches for very large documents
+        elif page_count > 100:
+            batch_size = 4  # Medium batches for large documents
+        else:
+            batch_size = 5  # Normal batches for smaller documents
+        
+        pages_text = []
+        
+        # Process pages in smaller batches to avoid memory issues
+        total_batches = (page_count + batch_size - 1) // batch_size
+        
+        logger.info(f"🔄 Processing {page_count} pages in {total_batches} batches of {batch_size}")
+        
+        for batch_num in range(total_batches):
+            start_page = batch_num * batch_size + 1
+            end_page = min((batch_num + 1) * batch_size, page_count)
+            
+            logger.info(f"📦 Processing batch {batch_num + 1}/{total_batches}: pages {start_page}-{end_page}")
+            
             try:
-                logger.debug(f"🔍 Processing OCR for page {i+1}/{total_pages}")
-                page_start_time = time.time()
+                # Convert only this batch of pages to images
+                images = convert_from_path(
+                    pdf_path, 
+                    dpi=dpi, 
+                    first_page=start_page, 
+                    last_page=end_page
+                )
                 
-                # Update progress if callback provided
-                if progress_callback:
-                    progress = (i / total_pages) * 100
-                    progress_callback(progress, f"Processing page {i+1} of {total_pages}")
+                # Process each page in the batch
+                for i, image in enumerate(images):
+                    page_num = start_page + i
+                    try:
+                        logger.debug(f"🔍 Processing OCR for page {page_num}/{page_count}")
+                        page_start_time = time.time()
+                        
+                        # Update progress if callback provided
+                        if progress_callback:
+                            progress = (page_num / page_count) * 100
+                            progress_callback(progress, f"Processing page {page_num} of {page_count}")
+                        
+                        # Extract text using OCR
+                        text = pytesseract.image_to_string(image)
+                        pages_text.append(text)
+                        
+                        page_time = time.time() - page_start_time
+                        logger.debug(f"✅ Page {page_num} OCR completed in {page_time:.2f}s, text length: {len(text)}")
+                        
+                        # Force garbage collection to free memory
+                        import gc
+                        gc.collect()
+                        
+                    except Exception as page_error:
+                        logger.error(f"❌ Error processing OCR for page {page_num}: {page_error}")
+                        logger.error(f"📋 Page error traceback: {traceback.format_exc()}")
+                        pages_text.append("")  # Add empty text for failed page
                 
-                # Extract text using OCR
-                text = pytesseract.image_to_string(image)
-                pages_text.append(text)
+                # Clear images from memory after processing batch
+                del images
+                import gc
+                gc.collect()
                 
-                page_time = time.time() - page_start_time
-                logger.debug(f"✅ Page {i+1} OCR completed in {page_time:.2f}s, text length: {len(text)}")
+                log_memory_usage(f"after batch {batch_num + 1}")
+                logger.info(f"✅ Batch {batch_num + 1} completed, processed {end_page - start_page + 1} pages")
                 
-            except Exception as page_error:
-                logger.error(f"❌ Error processing OCR for page {i+1}: {page_error}")
-                logger.error(f"📋 Page error traceback: {traceback.format_exc()}")
-                pages_text.append("")  # Add empty text for failed page
+            except Exception as batch_error:
+                logger.error(f"❌ Error processing batch {batch_num + 1}: {batch_error}")
+                logger.error(f"📋 Batch error traceback: {traceback.format_exc()}")
+                # Add empty text for failed pages in this batch
+                for _ in range(end_page - start_page + 1):
+                    pages_text.append("")
         
         # Final progress update
         if progress_callback:
             progress_callback(100, "OCR processing completed")
         
         total_time = time.time() - start_time
+        log_memory_usage("OCR completion")
         logger.info(f"✅ OCR extraction completed in {total_time:.2f}s")
         logger.info(f"📊 Total text extracted: {sum(len(text) for text in pages_text)} characters")
         
@@ -241,16 +315,40 @@ def parse_pdf(file_path: str, file_name: str, progress_callback=None) -> Documen
         if should_use_ocr(pages_text) and OCR_AVAILABLE and POPPLER_AVAILABLE and TESSERACT_AVAILABLE:
             logger.info(f"🔍 Low text density detected for {file_name}, switching to OCR...")
             print(f"Low text density detected for {file_name}, using OCR...")
-            ocr_pages_text = extract_text_with_ocr(file_path, progress_callback)
             
-            if ocr_pages_text:
-                pages_text = ocr_pages_text
-                document.ocr_used = True
-                logger.info(f"✅ OCR completed successfully for {file_name}")
-                print(f"OCR completed for {file_name}")
-            else:
-                logger.warning(f"⚠️ OCR failed for {file_name}, falling back to PyMuPDF text")
-                print(f"OCR failed for {file_name}, using PyMuPDF text")
+            # Add timeout for OCR processing to prevent hanging
+            import signal
+            
+            def timeout_handler(signum, frame):
+                raise TimeoutError("OCR processing timed out")
+            
+            # Set timeout to 10 minutes for OCR
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(600)  # 10 minutes timeout
+            
+            try:
+                ocr_pages_text = extract_text_with_ocr(file_path, progress_callback)
+                signal.alarm(0)  # Cancel timeout
+                
+                if ocr_pages_text:
+                    pages_text = ocr_pages_text
+                    document.ocr_used = True
+                    logger.info(f"✅ OCR completed successfully for {file_name}")
+                    print(f"OCR completed for {file_name}")
+                else:
+                    logger.warning(f"⚠️ OCR failed for {file_name}, falling back to PyMuPDF text")
+                    print(f"OCR failed for {file_name}, using PyMuPDF text")
+                    
+            except TimeoutError:
+                signal.alarm(0)  # Cancel timeout
+                logger.error(f"❌ OCR processing timed out for {file_name}")
+                print(f"OCR processing timed out for {file_name}, using PyMuPDF text")
+                
+            except Exception as ocr_error:
+                signal.alarm(0)  # Cancel timeout
+                logger.error(f"❌ OCR processing failed for {file_name}: {ocr_error}")
+                print(f"OCR processing failed for {file_name}, using PyMuPDF text")
+                
         elif should_use_ocr(pages_text) and not (OCR_AVAILABLE and POPPLER_AVAILABLE and TESSERACT_AVAILABLE):
             logger.warning(f"⚠️ Low text density detected for {file_name}, but OCR not available. Using PyMuPDF text.")
             print(f"Low text density detected for {file_name}, but OCR not available. Using PyMuPDF text.")
