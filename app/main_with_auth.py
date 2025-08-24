@@ -510,9 +510,17 @@ def show_documents_page(user_manager):
                             os.unlink(tmp_file_path)
                             continue
                         
-                        # Create progress bar and status for this file
-                        progress_bar = st.progress(0)
-                        status_text = st.empty()
+                        # Create progress bar and status for this file (outside button handler)
+                        progress_key = f"progress_{uploaded_file.name}"
+                        status_key = f"status_{uploaded_file.name}"
+                        
+                        if progress_key not in st.session_state:
+                            st.session_state[progress_key] = st.progress(0)
+                        if status_key not in st.session_state:
+                            st.session_state[status_key] = st.empty()
+                        
+                        progress_bar = st.session_state[progress_key]
+                        status_text = st.session_state[status_key]
                         
                         def update_progress(progress, message):
                             try:
