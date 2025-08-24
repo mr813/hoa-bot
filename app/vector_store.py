@@ -441,10 +441,11 @@ class PineconeVectorStore(VectorStore):
             return {'backend': 'Pinecone', 'error': str(e)}
 
 
-def create_vector_store(backend: str = "faiss", storage_dir: str = "data", dimension: int = 384, **kwargs) -> VectorStore:
+def create_vector_store(backend: str = "faiss", storage_dir: str = "data", **kwargs) -> VectorStore:
     """Factory function to create a vector store instance."""
     
     backend = backend.lower()
+    dimension = kwargs.get('dimension', 384)
     
     if backend == "faiss":
         return FAISSVectorStore(storage_dir, dimension)
