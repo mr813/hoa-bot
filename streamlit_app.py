@@ -7,6 +7,8 @@ import streamlit as st
 import tempfile
 import os
 import sys
+import threading
+import queue
 from pathlib import Path
 from typing import List, Dict, Any
 from dotenv import load_dotenv
@@ -33,8 +35,85 @@ except ImportError as e:
     st.error(f"Import error: {e}")
     st.stop()
 
+# Global processing queue and results
+if 'processing_queue' not in st.session_state:
+    st.session_state.processing_queue = queue.Queue()
+if 'processing_results' not in st.session_state:
+    st.session_state.processing_results = {}
+if 'processing_status' not in st.session_state:
+    st.session_state.processing_status = {}
+
+def background_processing_worker(file_path: str, file_name: str, doc_type: str, property_id: str, task_id: str):
+    """Background worker for PDF processing to avoid blocking the main thread."""
+    try:
+        st.session_state.processing_status[task_id] = "Processing..."
+        
+        # Import here to avoid circular imports
+        from app.parsing import parse_pdf, validate_pdf_file
+        
+        # Validate PDF first
+        is_valid, validation_message = validate_pdf_file(file_path)
+        if not is_valid:
+            st.session_state.processing_results[task_id] = {
+                'success': False,
+                'error': f"PDF validation failed: {validation_message}"
+            }
+            st.session_state.processing_status[task_id] = "Failed"
+            return
+        
+        # Parse PDF with progress tracking
+        def progress_callback(progress, message):
+            st.session_state.processing_status[task_id] = f"{message} ({progress:.1f}%)"
+        
+        document = parse_pdf(file_path, file_name, progress_callback)
+        text_content = document.get_all_text()
+        
+        if not text_content:
+            st.session_state.processing_results[task_id] = {
+                'success': False,
+                'error': "Failed to extract text from PDF"
+            }
+            st.session_state.processing_status[task_id] = "Failed"
+            return
+        
+        # Create RAG chatbot and add document
+        from app.rag_chatbot import create_rag_chatbot
+        rag_chatbot = create_rag_chatbot(property_id)
+        
+        rag_chatbot.add_documents([{
+            'text': text_content,
+            'name': file_name,
+            'type': doc_type
+        }])
+        
+        # Store results
+        st.session_state.processing_results[task_id] = {
+            'success': True,
+            'document': {
+                'name': file_name,
+                'type': doc_type,
+                'pages': len(document.pages),
+                'property_id': property_id,
+                'text_length': len(text_content),
+                'ocr_used': document.ocr_used
+            }
+        }
+        st.session_state.processing_status[task_id] = "Completed"
+        
+    except Exception as e:
+        st.session_state.processing_results[task_id] = {
+            'success': False,
+            'error': str(e)
+        }
+        st.session_state.processing_status[task_id] = "Failed"
+
 def main():
     """Main Streamlit application with authentication."""
+    
+    # Health check for Streamlit Cloud
+    if st.query_params.get("health") == "check":
+        st.write("OK")
+        return
     
     # Page configuration
     st.set_page_config(
@@ -349,7 +428,7 @@ def show_documents_page():
             
             if st.button(f"Process {uploaded_file.name}", key=f"process_{uploaded_file.name}"):
                 try:
-                    st.info(f"🔄 Starting processing for: {uploaded_file.name}")
+                    st.info(f"🔄 Starting background processing for: {uploaded_file.name}")
                     
                     # Create temporary file
                     with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
@@ -359,87 +438,68 @@ def show_documents_page():
                     st.info(f"📁 Temporary file created: {tmp_file_path}")
                     st.info(f"📊 File size: {len(uploaded_file.getvalue()) / (1024*1024):.2f} MB")
                     
-                    # Validate PDF first
-                    is_valid, validation_message = validate_pdf_file(tmp_file_path)
-                    if not is_valid:
-                        st.error(f"PDF validation failed: {validation_message}")
-                        # Clean up temporary file
-                        try:
-                            os.unlink(tmp_file_path)
-                        except:
-                            pass
-                        continue
+                    # Generate unique task ID
+                    import uuid
+                    task_id = str(uuid.uuid4())
                     
-                    st.success(f"✅ PDF validated: {validation_message}")
+                    # Start background processing
+                    thread = threading.Thread(
+                        target=background_processing_worker,
+                        args=(tmp_file_path, uploaded_file.name, doc_type, st.session_state.selected_property, task_id),
+                        daemon=True
+                    )
+                    thread.start()
                     
-                    # Progress tracking
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
+                    st.session_state.processing_status[task_id] = "Started"
+                    st.success(f"✅ Background processing started for {uploaded_file.name}")
+                    st.info("🔄 Processing will continue in the background. You can continue using the app.")
+                    st.info("📊 Check the 'Background Processing Status' section below for progress updates.")
+                    st.rerun()
                     
-                    def progress_callback(current_page, total_pages):
-                        progress = current_page / total_pages
-                        progress_bar.progress(progress)
-                        status_text.text(f"Processing page {current_page} of {total_pages}")
-                    
-                    # Parse PDF
-                    try:
-                        st.info(f"📖 Starting PDF parsing...")
-                        document = parse_pdf(tmp_file_path, uploaded_file.name, progress_callback)
-                        text_content = document.get_all_text()
+                except Exception as e:
+                    st.error(f"❌ Error starting background processing: {str(e)}")
+                    import traceback
+                    st.error(f"📋 Full traceback: {traceback.format_exc()}")
+    
+    # Background processing status
+    if st.session_state.processing_status:
+        st.subheader("🔄 Background Processing Status")
+        
+        for task_id, status in st.session_state.processing_status.items():
+            with st.expander(f"Task {task_id[:8]}... - {status}", expanded=True):
+                st.write(f"**Status:** {status}")
+                
+                if task_id in st.session_state.processing_results:
+                    result = st.session_state.processing_results[task_id]
+                    if result['success']:
+                        st.success("✅ Processing completed successfully!")
+                        doc = result['document']
+                        st.write(f"**Document:** {doc['name']}")
+                        st.write(f"**Type:** {doc['type']}")
+                        st.write(f"**Pages:** {doc['pages']}")
+                        st.write(f"**Text Length:** {doc['text_length']:,} characters")
+                        st.write(f"**OCR Used:** {doc['ocr_used']}")
                         
-                        st.info(f"✅ PDF parsing completed")
-                        st.info(f"📊 Extracted text length: {len(text_content)} characters")
-                        st.info(f"📄 Pages processed: {len(document.pages)}")
-                        st.info(f"🔍 OCR used: {document.ocr_used}")
-                        
-                        # Clean up temporary file
-                        os.unlink(tmp_file_path)
-                        st.info(f"🗑️ Temporary file cleaned up")
-                        
-                        if text_content:
-                        # Create RAG chatbot for this property
-                        st.info(f"🤖 Creating RAG chatbot for property: {st.session_state.selected_property}")
-                        rag_chatbot = create_rag_chatbot(st.session_state.selected_property)
-                        
-                        # Add document to RAG system
-                        st.info(f"📚 Adding document to RAG system...")
-                        rag_chatbot.add_documents([{
-                            'text': text_content,
-                            'source_document': uploaded_file.name,
-                            'document_type': doc_type
-                        }])
-                        st.info(f"✅ Document added to RAG system")
-                        
-                        # Update session state
+                        # Add to documents processed if not already there
                         doc_data = {
-                            'name': uploaded_file.name,
-                            'type': doc_type,
-                            'pages': len(text_content.split('\n\n')),  # Rough page count
-                            'property_id': st.session_state.selected_property
+                            'name': doc['name'],
+                            'type': doc['type'],
+                            'pages': doc['pages'],
+                            'property_id': doc['property_id']
                         }
-                        
                         if doc_data not in st.session_state.documents_processed:
                             st.session_state.documents_processed.append(doc_data)
-                        
-                        progress_bar.empty()
-                        status_text.empty()
-                        st.success(f"✅ {uploaded_file.name} processed successfully!")
-                        st.rerun()
+                            st.success("✅ Document added to your library!")
                     else:
-                        st.error(f"Failed to extract text from {uploaded_file.name}")
-                        
-                    except Exception as e:
-                        st.error(f"❌ Error processing {uploaded_file.name}: {str(e)}")
-                        st.error(f"📋 Error details: {type(e).__name__}")
-                        import traceback
-                        st.error(f"📋 Full traceback: {traceback.format_exc()}")
-                        # Clean up temporary file if it still exists
-                        try:
-                            if os.path.exists(tmp_file_path):
-                                os.unlink(tmp_file_path)
-                                st.info(f"🗑️ Cleaned up temporary file after error")
-                        except Exception as cleanup_error:
-                            st.warning(f"⚠️ Failed to clean up temporary file: {cleanup_error}")
+                        st.error(f"❌ Processing failed: {result['error']}")
+                
+                # Clean up completed tasks
+                if status in ["Completed", "Failed"]:
+                    if st.button("🗑️ Clear", key=f"clear_{task_id}"):
+                        del st.session_state.processing_status[task_id]
+                        if task_id in st.session_state.processing_results:
+                            del st.session_state.processing_results[task_id]
+                        st.rerun()
     
     # Document summary
     if st.session_state.documents_processed:
