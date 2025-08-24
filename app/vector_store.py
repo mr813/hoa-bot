@@ -450,6 +450,6 @@ def create_vector_store(backend: str = "faiss", storage_dir: str = "data", dimen
         return FAISSVectorStore(storage_dir, dimension)
     elif backend == "pinecone":
         index_name = kwargs.get('index_name', 'hoa-bot')
-        return PineconeVectorStore(storage_dir, dimension, index_name)
+        return PineconeVectorStore(storage_dir=storage_dir, dimension=dimension, index_name=index_name)
     else:
         raise ValueError(f"Unsupported vector store backend: {backend}. Supported backends: faiss, pinecone")
