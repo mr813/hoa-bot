@@ -509,8 +509,19 @@ def show_documents_page(user_manager):
                         status_text = st.empty()
                         
                         def update_progress(progress, message):
-                            progress_bar.progress(progress / 100)
-                            status_text.text(f"📄 {uploaded_file.name}: {message}")
+                            try:
+                                # Check if we're in the main thread (Streamlit context)
+                                import streamlit as st
+                                if hasattr(st, '_is_running_with_streamlit') and st._is_running_with_streamlit:
+                                    progress_bar.progress(progress / 100)
+                                    status_text.text(f"📄 {uploaded_file.name}: {message}")
+                                else:
+                                    # We're in a background thread, just log the progress
+                                    print(f"📄 {uploaded_file.name}: {message} ({progress:.1f}%)")
+                            except Exception as e:
+                                # If any Streamlit operation fails, just log the progress
+                                print(f"📄 {uploaded_file.name}: {message} ({progress:.1f}%)")
+                                print(f"Progress update error (can be ignored): {e}")
                         
                         # Parse the PDF with progress tracking (using existing temp file)
                         document = parse_pdf(tmp_file_path, uploaded_file.name, update_progress)
