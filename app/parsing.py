@@ -344,10 +344,13 @@ def validate_pdf_file(file_path: str) -> Tuple[bool, str]:
         
     except fitz.FileDataError as e:
         return False, f"PDF file is corrupted or password protected: {str(e)}"
-    except fitz.FileTypeError as e:
-        return False, f"File is not a valid PDF: {str(e)}"
     except Exception as e:
-        return False, f"PDF validation failed: {str(e)}"
+        # Check if it's a file type error by examining the error message
+        error_msg = str(e).lower()
+        if "not a pdf" in error_msg or "invalid" in error_msg or "cannot open" in error_msg:
+            return False, f"File is not a valid PDF: {str(e)}"
+        else:
+            return False, f"PDF validation failed: {str(e)}"
 
 
 def get_pdf_info(file_path: str) -> Dict[str, Any]:
