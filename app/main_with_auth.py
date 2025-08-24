@@ -514,18 +514,38 @@ def show_documents_page(user_manager):
                         progress_bar = st.progress(0)
                         status_text = st.empty()
                         
+                        # Progress display section that updates from session state
+                        progress_container = st.container()
+                        
+                        # Update progress bar from session state
+                        with progress_container:
+                            if progress_key in st.session_state:
+                                progress_data = st.session_state[progress_key]
+                                progress_bar.progress(progress_data['progress'] / 100)
+                                status_text.text(f"📄 {uploaded_file.name}: {progress_data['message']}")
+                        
                         # Progress tracking variables
                         progress_key = f"progress_{uploaded_file.name}"
                         
+                        # Initialize progress in session state
+                        if progress_key not in st.session_state:
+                            st.session_state[progress_key] = {
+                                'progress': 0,
+                                'message': 'Starting...',
+                                'timestamp': time.time()
+                            }
+                        
                         def update_progress(progress, message):
-                            # Update UI elements directly (don't use session state in background thread)
-                            try:
-                                progress_bar.progress(progress / 100)
-                                status_text.text(f"📄 {uploaded_file.name}: {message}")
-                            except Exception as e:
-                                # If UI update fails, just log the progress
-                                print(f"📄 {uploaded_file.name}: {message} ({progress:.1f}%)")
-                                print(f"Progress update error (can be ignored): {e}")
+                            # Store progress in session state for UI updates
+                            progress_key = f"progress_{uploaded_file.name}"
+                            st.session_state[progress_key] = {
+                                'progress': progress,
+                                'message': message,
+                                'timestamp': time.time()
+                            }
+                            
+                            # Log progress for debugging
+                            print(f"📄 {uploaded_file.name}: {message} ({progress:.1f}%)")
                         
                         # Parse the PDF with progress tracking (using existing temp file)
                         document = parse_pdf(tmp_file_path, uploaded_file.name, update_progress)
