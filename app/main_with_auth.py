@@ -45,17 +45,27 @@ def clear_application_cache():
         temp_dir = tempfile.gettempdir()
         temp_files_cleared = 0
         
-        # Look for temporary PDF files and other temp files
+        # Look for temporary PDF files and other temp files, but be more selective
         for filename in os.listdir(temp_dir):
             if filename.startswith('tmp') or filename.endswith('.pdf'):
                 file_path = os.path.join(temp_dir, filename)
                 try:
+                    # Skip files that might be in use (like persistent PDF files during OCR)
+                    if 'persistent_pdf' in filename:
+                        continue
+                    
+                    # Check if file is older than 1 hour to avoid deleting active files
                     if os.path.isfile(file_path):
-                        os.remove(file_path)
-                        temp_files_cleared += 1
+                        file_age = time.time() - os.path.getmtime(file_path)
+                        if file_age > 3600:  # 1 hour
+                            os.remove(file_path)
+                            temp_files_cleared += 1
                     elif os.path.isdir(file_path):
-                        shutil.rmtree(file_path)
-                        temp_files_cleared += 1
+                        # For directories, only delete if they're empty or old
+                        dir_age = time.time() - os.path.getmtime(file_path)
+                        if dir_age > 3600:  # 1 hour
+                            shutil.rmtree(file_path)
+                            temp_files_cleared += 1
                 except Exception as e:
                     # Ignore errors for files that can't be deleted
                     pass

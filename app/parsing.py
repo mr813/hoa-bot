@@ -220,12 +220,28 @@ def extract_text_with_ocr(pdf_path: str, progress_callback=None) -> List[str]:
         temp_dir = tempfile.mkdtemp()
         persistent_pdf_path = os.path.join(temp_dir, "persistent_pdf.pdf")
         
-        # Copy the original PDF to the persistent location
-        shutil.copy2(pdf_path, persistent_pdf_path)
-        logger.info(f"📁 Created persistent copy at: {persistent_pdf_path}")
-        
-        # Use the persistent path for all operations
-        pdf_path = persistent_pdf_path
+        # Copy the original PDF to the persistent location with retry
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                shutil.copy2(pdf_path, persistent_pdf_path)
+                logger.info(f"📁 Created persistent copy at: {persistent_pdf_path}")
+                
+                # Verify the copy was successful
+                if os.path.exists(persistent_pdf_path) and os.path.getsize(persistent_pdf_path) > 0:
+                    # Use the persistent path for all operations
+                    pdf_path = persistent_pdf_path
+                    break
+                else:
+                    raise Exception("Copy verification failed")
+            except Exception as copy_error:
+                if attempt < max_retries - 1:
+                    logger.warning(f"⚠️ Copy attempt {attempt + 1} failed: {copy_error}, retrying...")
+                    time.sleep(1)  # Wait before retry
+                else:
+                    logger.error(f"❌ Failed to create persistent PDF copy after {max_retries} attempts: {copy_error}")
+                    # Continue with original path if copy fails
+                    pass
     except Exception as e:
         logger.error(f"❌ Failed to create persistent PDF copy: {e}")
         # Continue with original path if copy fails
@@ -303,6 +319,11 @@ def extract_text_with_ocr(pdf_path: str, progress_callback=None) -> List[str]:
             logger.info(f"📦 Processing batch {batch_num + 1}/{total_batches}: pages {start_page}-{end_page}")
             
             try:
+                # Check if the PDF file still exists before processing
+                if not os.path.exists(pdf_path):
+                    logger.error(f"❌ PDF file no longer exists: {pdf_path}")
+                    raise Exception(f"PDF file was deleted during processing: {pdf_path}")
+                
                 # Convert only this batch of pages to images
                 images = convert_from_path(
                     pdf_path, 
