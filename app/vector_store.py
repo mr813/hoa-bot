@@ -413,6 +413,21 @@ class PineconeVectorStore(VectorStore):
         """Get list of documents with their chunk counts."""
         try:
             doc_counts = {}
+            
+            # If local metadata is empty but we have vectors in Pinecone, try to fetch from Pinecone
+            if not self.metadata:
+                try:
+                    # Get index stats to see if there are vectors
+                    index_stats = self.index.describe_index_stats()
+                    if index_stats.total_vector_count > 0:
+                        logger.info(f"📁 Local metadata empty but found {index_stats.total_vector_count} vectors in Pinecone")
+                        # Try to fetch metadata from Pinecone by querying with a dummy vector
+                        return self._recover_document_list_from_pinecone()
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not check Pinecone index stats: {e}")
+                    return []
+            
+            # Use local metadata to build document list
             for meta in self.metadata:
                 doc_name = meta.get('source_document', 'Unknown')
                 if doc_name not in doc_counts:
@@ -426,6 +441,45 @@ class PineconeVectorStore(VectorStore):
             return list(doc_counts.values())
         except Exception as e:
             logger.error(f"❌ Failed to get document list from Pinecone: {e}")
+            return []
+    
+    def _recover_document_list_from_pinecone(self) -> List[Dict[str, Any]]:
+        """Recover document list by querying Pinecone for metadata."""
+        try:
+            # Create a dummy query vector (all zeros) to fetch some vectors with metadata
+            dummy_vector = [0.0] * self.dimension
+            
+            # Query Pinecone to get some vectors with metadata
+            results = self.index.query(
+                vector=dummy_vector,
+                top_k=1000,  # Get as many as possible
+                include_metadata=True
+            )
+            
+            if not results.matches:
+                logger.warning("⚠️ No vectors found in Pinecone query")
+                return []
+            
+            # Extract document information from metadata
+            doc_counts = {}
+            for match in results.matches:
+                if match.metadata:
+                    doc_name = match.metadata.get('source_document', 'Unknown')
+                    doc_type = match.metadata.get('document_type', 'Unknown')
+                    
+                    if doc_name not in doc_counts:
+                        doc_counts[doc_name] = {
+                            'name': doc_name,
+                            'chunk_count': 0,
+                            'document_type': doc_type
+                        }
+                    doc_counts[doc_name]['chunk_count'] += 1
+            
+            logger.info(f"✅ Recovered {len(doc_counts)} documents from Pinecone metadata")
+            return list(doc_counts.values())
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to recover document list from Pinecone: {e}")
             return []
     
     def clear_all(self) -> bool:
