@@ -148,7 +148,9 @@ class RAGChatbot:
         self.document_metadata = []
         
         # Load existing data if available
+        print(f"🔍 RAG Debug - Initializing RAG chatbot for property: {property_id}")
         self._load_persistent_data()
+        print(f"🔍 RAG Debug - After _load_persistent_data: documents={len(self.documents)}, metadata={len(self.document_metadata) if self.document_metadata else 0}")
         
     def _generate_embeddings(self, texts: List[str]) -> np.ndarray:
         """
@@ -204,11 +206,15 @@ class RAGChatbot:
     def _load_persistent_data(self):
         """Load persistent data from disk."""
         try:
+            print(f"🔍 RAG Debug - _load_persistent_data: chunks_file exists: {self.chunks_file.exists()}, metadata_file exists: {self.metadata_file.exists()}")
+            
             # Load chunks
             if self.chunks_file.exists():
                 with open(self.chunks_file, 'r', encoding='utf-8') as f:
                     self.documents = json.load(f)
                 print(f"✅ Loaded {len(self.documents)} document chunks")
+            else:
+                print("🔍 RAG Debug - No chunks file found")
             
             # Load metadata
             if self.metadata_file.exists():
