@@ -31,8 +31,58 @@ from app.user_management import create_user_manager, ensure_property_storage
 from app.utils import clean_text, truncate_text
 
 
+def clear_application_cache():
+    """Clear all application cache and temporary files on startup."""
+    try:
+        import shutil
+        import tempfile
+        
+        # Clear Streamlit cache
+        st.cache_data.clear()
+        st.cache_resource.clear()
+        
+        # Clear temporary files
+        temp_dir = tempfile.gettempdir()
+        temp_files_cleared = 0
+        
+        # Look for temporary PDF files and other temp files
+        for filename in os.listdir(temp_dir):
+            if filename.startswith('tmp') or filename.endswith('.pdf'):
+                file_path = os.path.join(temp_dir, filename)
+                try:
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+                        temp_files_cleared += 1
+                    elif os.path.isdir(file_path):
+                        shutil.rmtree(file_path)
+                        temp_files_cleared += 1
+                except Exception as e:
+                    # Ignore errors for files that can't be deleted
+                    pass
+        
+        print(f"🧹 Cache cleared: {temp_files_cleared} temporary files removed")
+        
+        # Clear any existing session state that might cause issues
+        keys_to_clear = [
+            'uploaded_files', 'processing_status', 'current_upload', 
+            'ocr_progress', 'document_processing', 'temp_files'
+        ]
+        
+        for key in keys_to_clear:
+            if key in st.session_state:
+                del st.session_state[key]
+        
+        print("🧹 Session state cache cleared")
+        
+    except Exception as e:
+        print(f"⚠️ Warning: Could not clear all cache: {e}")
+
+
 def main():
     """Main Streamlit application with authentication."""
+    
+    # Clear cache on startup
+    clear_application_cache()
     
     # Page configuration
     st.set_page_config(
