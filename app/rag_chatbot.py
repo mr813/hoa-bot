@@ -230,9 +230,14 @@ class RAGChatbot:
                 print("🔍 No local metadata or documents, checking if vectors exist in Pinecone...")
                 stats = self.vector_store.get_stats()
                 index_vector_count = stats.get('index_vector_count', 0)
+                print(f"🔍 RAG Debug - index_vector_count: {index_vector_count}")
                 if index_vector_count > 0:
                     print(f"🔍 Found {index_vector_count} vectors in Pinecone, attempting to recover documents...")
                     self._recover_documents_from_pinecone()
+                else:
+                    print("🔍 RAG Debug - No vectors found in Pinecone")
+            else:
+                print(f"🔍 RAG Debug - document_metadata: {len(self.document_metadata) if self.document_metadata else 0}, documents: {len(self.documents)}")
                 
         except Exception as e:
             print(f"⚠️ Error loading persistent data: {e}")
@@ -243,6 +248,7 @@ class RAGChatbot:
     def _recover_documents_from_pinecone(self):
         """Recover document chunks from Pinecone when local data is missing."""
         try:
+            print("🔍 RAG Debug - Starting _recover_documents_from_pinecone")
             # Use the vector store's recovery method
             if hasattr(self.vector_store, '_recover_document_list_from_pinecone'):
                 doc_list = self.vector_store._recover_document_list_from_pinecone()
