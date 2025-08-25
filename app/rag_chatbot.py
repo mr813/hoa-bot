@@ -242,6 +242,17 @@ class RAGChatbot:
                     self._recover_documents_from_pinecone()
                 else:
                     print("🔍 RAG Debug - No vectors found in Pinecone")
+            # If we have some documents but fewer than the total vectors in Pinecone, try to recover
+            elif self.documents and self.document_metadata:
+                stats = self.vector_store.get_stats()
+                index_vector_count = stats.get('index_vector_count', 0)
+                local_doc_count = len(self.documents)
+                print(f"🔍 RAG Debug - Have {local_doc_count} local documents, but {index_vector_count} vectors in Pinecone")
+                if index_vector_count > local_doc_count:
+                    print(f"🔍 Found {index_vector_count} vectors in Pinecone but only {local_doc_count} local documents, attempting to recover missing documents...")
+                    self._recover_documents_from_pinecone()
+                else:
+                    print(f"🔍 RAG Debug - Local document count ({local_doc_count}) matches Pinecone vectors ({index_vector_count})")
             else:
                 print(f"🔍 RAG Debug - document_metadata: {len(self.document_metadata) if self.document_metadata else 0}, documents: {len(self.documents)}")
                 
