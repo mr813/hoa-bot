@@ -239,10 +239,26 @@ class RAGChatbot:
                 doc_list = self.vector_store._recover_document_list_from_pinecone()
                 print(f"🔍 Recovered document list: {doc_list}")
                 
-                # For now, we can't fully recover the document content from metadata alone
-                # The chunk content needs to be stored in the metadata during upload
-                print("⚠️ Document content recovery requires chunk_content in metadata")
-                print("⚠️ Please re-upload documents to enable full recovery")
+                # Try to recover document content from metadata
+                if self.document_metadata:
+                    print(f"🔍 Attempting to rebuild documents from {len(self.document_metadata)} metadata entries...")
+                    recovered_documents = []
+                    
+                    for meta in self.document_metadata:
+                        chunk_content = meta.get('chunk_content', '')
+                        if chunk_content:
+                            recovered_documents.append(chunk_content)
+                        else:
+                            print(f"⚠️ Missing chunk_content in metadata: {meta}")
+                    
+                    if recovered_documents:
+                        self.documents = recovered_documents
+                        print(f"✅ Recovered {len(recovered_documents)} document chunks from metadata")
+                        self._save_persistent_data()
+                    else:
+                        print("⚠️ No document content found in metadata")
+                else:
+                    print("⚠️ No metadata available for recovery")
                 
         except Exception as e:
             print(f"❌ Error recovering documents from Pinecone: {e}")
