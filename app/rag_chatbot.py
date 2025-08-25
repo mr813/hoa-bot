@@ -234,41 +234,15 @@ class RAGChatbot:
     def _recover_documents_from_pinecone(self):
         """Recover document chunks from Pinecone when local data is missing."""
         try:
-            # Query Pinecone to get vectors with metadata
-            dummy_vector = [0.0] * 384  # Default dimension
-            results = self.vector_store.index.query(
-                vector=dummy_vector,
-                top_k=1000,  # Get as many as possible
-                include_metadata=True
-            )
-            
-            if not results.matches:
-                print("⚠️ No vectors found in Pinecone query")
-                return
-            
-            print(f"🔍 Found {len(results.matches)} vectors in Pinecone, recovering documents...")
-            
-            # Rebuild documents list from Pinecone metadata
-            recovered_documents = []
-            recovered_metadata = []
-            
-            for match in results.matches:
-                if match.metadata:
-                    # Extract chunk content from metadata
-                    chunk_content = match.metadata.get('chunk_content', '')
-                    if chunk_content:
-                        recovered_documents.append(chunk_content)
-                        recovered_metadata.append(match.metadata)
-            
-            if recovered_documents:
-                self.documents = recovered_documents
-                self.document_metadata = recovered_metadata
-                print(f"✅ Recovered {len(recovered_documents)} document chunks from Pinecone")
+            # Use the vector store's recovery method
+            if hasattr(self.vector_store, '_recover_document_list_from_pinecone'):
+                doc_list = self.vector_store._recover_document_list_from_pinecone()
+                print(f"🔍 Recovered document list: {doc_list}")
                 
-                # Save the recovered data to disk
-                self._save_persistent_data()
-            else:
-                print("⚠️ No document content found in Pinecone metadata")
+                # For now, we can't fully recover the document content from metadata alone
+                # The chunk content needs to be stored in the metadata during upload
+                print("⚠️ Document content recovery requires chunk_content in metadata")
+                print("⚠️ Please re-upload documents to enable full recovery")
                 
         except Exception as e:
             print(f"❌ Error recovering documents from Pinecone: {e}")
@@ -672,6 +646,7 @@ class RAGChatbot:
             if metadata and 'chunk_index' in metadata:
                 # Find the corresponding document content
                 chunk_idx = int(metadata.get('chunk_index', 0))  # Convert to integer
+                print(f"🔍 Debug - chunk_idx: {chunk_idx}, len(self.documents): {len(self.documents)}, metadata: {metadata}")
                 if chunk_idx < len(self.documents):
                     chunk_data = {
                         'content': self.documents[chunk_idx],
@@ -685,6 +660,8 @@ class RAGChatbot:
                         bylaws_chunks.append(chunk_data)
                     else:
                         other_chunks.append(chunk_data)
+                else:
+                    print(f"⚠️ Warning - chunk_idx {chunk_idx} >= len(self.documents) {len(self.documents)}")
         
         # Enhanced search strategy: prioritize "Other" documents first, then "HOA Bylaws"
         relevant_chunks = []
