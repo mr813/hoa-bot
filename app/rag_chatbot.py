@@ -50,79 +50,28 @@ class RAGChatbot:
         self.chunks_file = self.storage_dir / "chunks.json"
         self.metadata_file = self.storage_dir / "metadata.json"
         
-        # Initialize sentence transformer for embeddings with robust error handling
-        import torch
+        # Initialize sentence transformer for embeddings using the model cache system
+        from app.model_cache import get_sentence_transformer, get_model_info
         
-        # Set environment variables to avoid meta tensor issues and configure caching
-        os.environ["TOKENIZERS_PARALLELISM"] = "false"
-        os.environ["HF_HOME"] = str(Path.home() / ".cache" / "huggingface")
-        os.environ["TRANSFORMERS_CACHE"] = str(Path.home() / ".cache" / "huggingface" / "transformers")
+        # Get model info for debugging
+        model_info = get_model_info()
+        print(f"🔍 Model cache info: {model_info}")
         
-        # Try multiple model loading strategies to handle Hugging Face rate limits
-        self.embedding_model = None
-        model_name = 'all-MiniLM-L6-v2'
+        # Load the sentence transformer using the caching system
+        self.embedding_model = get_sentence_transformer()
         
-        # Strategy 1: Try with local cache and longer timeout
-        try:
-            print("🔄 Loading sentence transformer model (attempt 1)...")
-            self.embedding_model = SentenceTransformer(model_name, device='cpu')
-            print("✅ Sentence transformer loaded successfully")
-        except Exception as e:
-            print(f"⚠️ First attempt failed: {str(e)}")
-            
-            # Strategy 2: Try with different model or fallback
-            try:
-                print("🔄 Trying alternative model loading approach...")
-                # Try with a different model that might be more available
-                alternative_models = [
-                    'paraphrase-MiniLM-L6-v2',
-                    'all-MiniLM-L12-v2',
-                    'multi-qa-MiniLM-L6-cos-v1'
-                ]
-                
-                for alt_model in alternative_models:
-                    try:
-                        print(f"🔄 Trying alternative model: {alt_model}")
-                        self.embedding_model = SentenceTransformer(alt_model, device='cpu')
-                        print(f"✅ Successfully loaded alternative model: {alt_model}")
-                        break
-                    except Exception as alt_e:
-                        print(f"⚠️ Alternative model {alt_model} failed: {str(alt_e)}")
-                        continue
-                
-                # If all alternatives failed, try original with different approach
-                if self.embedding_model is None:
-                    print("🔄 Trying original model with different initialization...")
-                    try:
-                        self.embedding_model = SentenceTransformer(model_name)
-                        # Try different methods to move to CPU
-                        try:
-                            self.embedding_model.to_empty(device='cpu')
-                        except:
-                            try:
-                                self.embedding_model.to('cpu')
-                            except:
-                                # Last resort: try to force CPU
-                                for param in self.embedding_model.parameters():
-                                    param.data = param.data.cpu()
-                        print("✅ Original model loaded with fallback approach")
-                    except Exception as fallback_e:
-                        print(f"⚠️ Fallback approach failed: {str(fallback_e)}")
-                        
-            except Exception as strategy2_e:
-                print(f"⚠️ Strategy 2 failed: {str(strategy2_e)}")
-        
-        # Strategy 3: If all else fails, create a minimal working fallback
         if self.embedding_model is None:
-            print("⚠️ All model loading strategies failed. Creating minimal fallback...")
+            print("❌ Failed to load sentence transformer model")
+            # Fallback to a simple embedding approach
             try:
-                # Try to create a simple embedding function as fallback
                 from sklearn.feature_extraction.text import TfidfVectorizer
                 self.embedding_model = TfidfVectorizer(max_features=384, stop_words='english')
                 print("✅ Created TF-IDF fallback embedding model")
             except Exception as fallback_e:
                 print(f"❌ Even fallback embedding failed: {str(fallback_e)}")
                 self.embedding_model = None
+        else:
+            print("✅ Sentence transformer loaded successfully from cache")
         
         # Vector store initialization
         self.dimension = 384  # all-MiniLM-L6-v2 embedding dimension

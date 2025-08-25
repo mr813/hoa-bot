@@ -84,6 +84,9 @@ def clear_application_cache():
         
         print("🧹 Session state cache cleared")
         
+        # Note: We don't clear the model cache here as it should persist between sessions
+        # to avoid repeated downloads from Hugging Face
+        
     except Exception as e:
         print(f"⚠️ Warning: Could not clear all cache: {e}")
 
