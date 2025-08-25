@@ -658,7 +658,11 @@ class RAGChatbot:
         other_chunks = []
         bylaws_chunks = []
         
+        print(f"🔍 Debug - Starting context retrieval with {len(scores)} scores and {len(metadata_list)} metadata entries")
+        print(f"🔍 Debug - Documents available: {len(self.documents)}")
+        
         for i, (score, metadata) in enumerate(zip(scores, metadata_list)):
+            print(f"🔍 Debug - Processing result {i}: score={score}, metadata={metadata}")
             if metadata and 'chunk_index' in metadata:
                 # Find the corresponding document content
                 chunk_idx = int(metadata.get('chunk_index', 0))  # Convert to integer
