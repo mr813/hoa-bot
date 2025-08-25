@@ -210,6 +210,27 @@ def extract_text_with_ocr(pdf_path: str, progress_callback=None) -> List[str]:
     log_memory_usage("OCR start")
     start_time = time.time()
     
+    # Create a persistent copy of the PDF file to prevent deletion during processing
+    import tempfile
+    import shutil
+    
+    persistent_pdf_path = None
+    try:
+        # Create a temporary file that won't be automatically cleaned up
+        temp_dir = tempfile.mkdtemp()
+        persistent_pdf_path = os.path.join(temp_dir, "persistent_pdf.pdf")
+        
+        # Copy the original PDF to the persistent location
+        shutil.copy2(pdf_path, persistent_pdf_path)
+        logger.info(f"📁 Created persistent copy at: {persistent_pdf_path}")
+        
+        # Use the persistent path for all operations
+        pdf_path = persistent_pdf_path
+    except Exception as e:
+        logger.error(f"❌ Failed to create persistent PDF copy: {e}")
+        # Continue with original path if copy fails
+        pass
+    
     # Test OCR functionality before starting
     if not test_ocr_functionality():
         logger.error("❌ OCR functionality test failed - cannot proceed with OCR")
@@ -373,6 +394,16 @@ def extract_text_with_ocr(pdf_path: str, progress_callback=None) -> List[str]:
             print("💡 Hint: OCR processing timed out, document may be too large")
         
         return []
+    finally:
+        # Clean up the persistent PDF file
+        if persistent_pdf_path and os.path.exists(persistent_pdf_path):
+            try:
+                # Remove the persistent file and its directory
+                temp_dir = os.path.dirname(persistent_pdf_path)
+                shutil.rmtree(temp_dir)
+                logger.info(f"🧹 Cleaned up persistent PDF file: {persistent_pdf_path}")
+            except Exception as cleanup_error:
+                logger.warning(f"⚠️ Failed to clean up persistent PDF file: {cleanup_error}")
 
 
 def should_use_ocr(pages_text: List[str]) -> bool:
