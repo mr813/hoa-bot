@@ -460,9 +460,11 @@ class PineconeVectorStore(VectorStore):
                 logger.warning("⚠️ No vectors found in Pinecone query")
                 return []
             
+            logger.info(f"🔍 Found {len(results.matches)} vectors in Pinecone query")
+            
             # Extract document information from metadata
             doc_counts = {}
-            for match in results.matches:
+            for i, match in enumerate(results.matches):
                 if match.metadata:
                     doc_name = match.metadata.get('source_document', 'Unknown')
                     doc_type = match.metadata.get('document_type', 'Unknown')
@@ -474,8 +476,15 @@ class PineconeVectorStore(VectorStore):
                             'document_type': doc_type
                         }
                     doc_counts[doc_name]['chunk_count'] += 1
+                    
+                    # Log first few matches for debugging
+                    if i < 5:
+                        logger.info(f"🔍 Vector {i}: doc='{doc_name}', type='{doc_type}'")
             
             logger.info(f"✅ Recovered {len(doc_counts)} documents from Pinecone metadata")
+            for doc_name, doc_info in doc_counts.items():
+                logger.info(f"📄 Document: {doc_name} ({doc_info['chunk_count']} chunks, type: {doc_info['document_type']})")
+            
             return list(doc_counts.values())
             
         except Exception as e:

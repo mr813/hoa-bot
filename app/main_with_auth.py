@@ -478,7 +478,10 @@ def show_documents_page(user_manager):
         # try to get document list from the vector store
         elif index_vector_count > 0 and rag_chatbot:
             try:
+                st.info(f"🔍 Attempting to recover documents from Pinecone (found {index_vector_count} vectors)")
                 doc_list = rag_chatbot.vector_store.get_document_list()
+                st.info(f"🔍 get_document_list() returned {len(doc_list)} documents")
+                
                 if doc_list:
                     # Add documents to session state
                     for doc_info in doc_list:
@@ -488,10 +491,15 @@ def show_documents_page(user_manager):
                             'pages': doc_info['chunk_count'],  # Use chunk count as page count
                             'property_id': st.session_state.selected_property
                         }
+                        st.info(f"🔍 Adding document: {doc_info['name']} ({doc_info['chunk_count']} chunks, type: {doc_info['document_type']})")
                         if doc_data not in st.session_state.documents_processed:
                             st.session_state.documents_processed.append(doc_data)
+                        else:
+                            st.info(f"🔍 Document {doc_info['name']} already in session state")
                     
                     st.success(f"✅ Loaded {len(doc_list)} documents from Pinecone index")
+                else:
+                    st.warning(f"⚠️ No documents returned from get_document_list() despite {index_vector_count} vectors in index")
             except Exception as e:
                 st.warning(f"⚠️ Found {index_vector_count} vectors in index but couldn't load document metadata: {e}")
     
