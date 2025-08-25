@@ -224,6 +224,15 @@ class RAGChatbot:
             if self.document_metadata and not self.documents:
                 print("🔍 Found metadata but no documents, attempting to recover from Pinecone...")
                 self._recover_documents_from_pinecone()
+            
+            # If we have no metadata and no documents, but there are vectors in Pinecone, try to recover
+            elif not self.document_metadata and not self.documents:
+                print("🔍 No local metadata or documents, checking if vectors exist in Pinecone...")
+                stats = self.vector_store.get_stats()
+                index_vector_count = stats.get('index_vector_count', 0)
+                if index_vector_count > 0:
+                    print(f"🔍 Found {index_vector_count} vectors in Pinecone, attempting to recover documents...")
+                    self._recover_documents_from_pinecone()
                 
         except Exception as e:
             print(f"⚠️ Error loading persistent data: {e}")
@@ -258,7 +267,41 @@ class RAGChatbot:
                     else:
                         print("⚠️ No document content found in metadata")
                 else:
-                    print("⚠️ No metadata available for recovery")
+                    print("⚠️ No local metadata available, attempting to recover from Pinecone directly...")
+                    # Try to recover from Pinecone directly by querying for vectors with metadata
+                    if hasattr(self.vector_store, 'index'):
+                        # Query Pinecone to get vectors with metadata
+                        dummy_vector = [0.0] * 384  # Default dimension
+                        results = self.vector_store.index.query(
+                            vector=dummy_vector,
+                            top_k=1000,  # Get as many as possible
+                            include_metadata=True
+                        )
+                        
+                        if results.matches:
+                            print(f"🔍 Found {len(results.matches)} vectors in Pinecone query")
+                            recovered_documents = []
+                            recovered_metadata = []
+                            
+                            for match in results.matches:
+                                if match.metadata:
+                                    # Extract chunk content from metadata
+                                    chunk_content = match.metadata.get('chunk_content', '')
+                                    if chunk_content:
+                                        recovered_documents.append(chunk_content)
+                                        recovered_metadata.append(match.metadata)
+                            
+                            if recovered_documents:
+                                self.documents = recovered_documents
+                                self.document_metadata = recovered_metadata
+                                print(f"✅ Recovered {len(recovered_documents)} document chunks from Pinecone")
+                                self._save_persistent_data()
+                            else:
+                                print("⚠️ No document content found in Pinecone metadata")
+                        else:
+                            print("⚠️ No vectors found in Pinecone query")
+                    else:
+                        print("⚠️ Cannot access Pinecone index directly")
                 
         except Exception as e:
             print(f"❌ Error recovering documents from Pinecone: {e}")
