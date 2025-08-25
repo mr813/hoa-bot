@@ -442,7 +442,11 @@ def show_documents_page(user_manager):
         st.session_state.documents_processed = []
     
     # Check if we have documents in storage but not in session state
-    if storage_info.get('chunks_in_memory', 0) > 0 and not any(
+    vector_store_stats = storage_info.get('vector_store', {})
+    index_vector_count = vector_store_stats.get('index_vector_count', 0)
+    chunks_in_memory = storage_info.get('chunks_in_memory', 0)
+    
+    if (chunks_in_memory > 0 or index_vector_count > 0) and not any(
         doc.get('property_id') == st.session_state.selected_property 
         for doc in st.session_state.documents_processed
     ):
@@ -469,6 +473,27 @@ def show_documents_page(user_manager):
             
             # Show success message
             st.success(f"✅ Loaded {len(doc_sources)} previously uploaded documents from storage")
+        
+        # If we still don't have documents but there are vectors in the index,
+        # try to get document list from the vector store
+        elif index_vector_count > 0 and rag_chatbot:
+            try:
+                doc_list = rag_chatbot.vector_store.get_document_list()
+                if doc_list:
+                    # Add documents to session state
+                    for doc_info in doc_list:
+                        doc_data = {
+                            'name': doc_info['name'],
+                            'type': doc_info['document_type'],
+                            'pages': doc_info['chunk_count'],  # Use chunk count as page count
+                            'property_id': st.session_state.selected_property
+                        }
+                        if doc_data not in st.session_state.documents_processed:
+                            st.session_state.documents_processed.append(doc_data)
+                    
+                    st.success(f"✅ Loaded {len(doc_list)} documents from Pinecone index")
+            except Exception as e:
+                st.warning(f"⚠️ Found {index_vector_count} vectors in index but couldn't load document metadata: {e}")
     
     # Document upload
     uploaded_files = st.file_uploader(
@@ -562,6 +587,7 @@ def show_documents_page(user_manager):
         st.write(f"**Total Documents:** {len(property_docs)}")
         st.write(f"**Total Pages:** {sum(doc['pages'] for doc in property_docs)}")
         st.write(f"**Total Chunks:** {storage_info.get('chunks_in_memory', 0)}")
+        st.write(f"**Vectors in Index:** {vector_store_stats.get('index_vector_count', 0)}")
         
         # Document type statistics
         bylaws_count = len([doc for doc in property_docs if doc.get('type') == 'HOA Bylaws'])
@@ -648,7 +674,12 @@ def show_chat_page(user_manager):
         )
         storage_info = rag_chatbot.get_storage_info() if rag_chatbot else {}
         
-        if storage_info.get('chunks_in_memory', 0) > 0:
+        # Check if there are vectors in the index (even if local metadata is empty)
+        vector_store_stats = storage_info.get('vector_store', {})
+        index_vector_count = vector_store_stats.get('index_vector_count', 0)
+        chunks_in_memory = storage_info.get('chunks_in_memory', 0)
+        
+        if chunks_in_memory > 0 or index_vector_count > 0:
             # Documents exist in storage, load them into session state
             if rag_chatbot and rag_chatbot.document_metadata:
                 # Group by source document
@@ -673,6 +704,31 @@ def show_chat_page(user_manager):
                 # Update property_docs
                 property_docs = [doc for doc in st.session_state.documents_processed 
                                if doc.get('property_id') == st.session_state.selected_property]
+            
+            # If we still don't have documents but there are vectors in the index,
+            # try to get document list from the vector store
+            if not property_docs and index_vector_count > 0 and rag_chatbot:
+                try:
+                    doc_list = rag_chatbot.vector_store.get_document_list()
+                    if doc_list:
+                        # Add documents to session state
+                        for doc_info in doc_list:
+                            doc_data = {
+                                'name': doc_info['name'],
+                                'type': doc_info['document_type'],
+                                'pages': doc_info['chunk_count'],  # Use chunk count as page count
+                                'property_id': st.session_state.selected_property
+                            }
+                            if doc_data not in st.session_state.documents_processed:
+                                st.session_state.documents_processed.append(doc_data)
+                        
+                        # Update property_docs
+                        property_docs = [doc for doc in st.session_state.documents_processed 
+                                       if doc.get('property_id') == st.session_state.selected_property]
+                        
+                        st.success(f"✅ Loaded {len(doc_list)} documents from Pinecone index")
+                except Exception as e:
+                    st.warning(f"⚠️ Found {index_vector_count} vectors in index but couldn't load document metadata: {e}")
     
     if not property_docs:
         st.info("No documents uploaded for this property yet. Upload some documents first!")
