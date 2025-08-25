@@ -219,12 +219,59 @@ class RAGChatbot:
             # Get vector store stats
             stats = self.vector_store.get_stats()
             print(f"✅ Vector store stats: {stats}")
+            
+            # If we have metadata but no documents, try to recover from Pinecone
+            if self.document_metadata and not self.documents:
+                print("🔍 Found metadata but no documents, attempting to recover from Pinecone...")
+                self._recover_documents_from_pinecone()
                 
         except Exception as e:
             print(f"⚠️ Error loading persistent data: {e}")
             # Reset to empty state if loading fails
             self.documents = []
             self.document_metadata = []
+    
+    def _recover_documents_from_pinecone(self):
+        """Recover document chunks from Pinecone when local data is missing."""
+        try:
+            # Query Pinecone to get vectors with metadata
+            dummy_vector = [0.0] * 384  # Default dimension
+            results = self.vector_store.index.query(
+                vector=dummy_vector,
+                top_k=1000,  # Get as many as possible
+                include_metadata=True
+            )
+            
+            if not results.matches:
+                print("⚠️ No vectors found in Pinecone query")
+                return
+            
+            print(f"🔍 Found {len(results.matches)} vectors in Pinecone, recovering documents...")
+            
+            # Rebuild documents list from Pinecone metadata
+            recovered_documents = []
+            recovered_metadata = []
+            
+            for match in results.matches:
+                if match.metadata:
+                    # Extract chunk content from metadata
+                    chunk_content = match.metadata.get('chunk_content', '')
+                    if chunk_content:
+                        recovered_documents.append(chunk_content)
+                        recovered_metadata.append(match.metadata)
+            
+            if recovered_documents:
+                self.documents = recovered_documents
+                self.document_metadata = recovered_metadata
+                print(f"✅ Recovered {len(recovered_documents)} document chunks from Pinecone")
+                
+                # Save the recovered data to disk
+                self._save_persistent_data()
+            else:
+                print("⚠️ No document content found in Pinecone metadata")
+                
+        except Exception as e:
+            print(f"❌ Error recovering documents from Pinecone: {e}")
     
     def _save_persistent_data(self):
         """Save data to disk."""
@@ -332,7 +379,8 @@ class RAGChatbot:
                         'document_type': doc.get('type', 'Unknown'),
                         'chunk_index': i,
                         'total_chunks': len(text_chunks),
-                        'source_document': doc.get('name', 'Unknown')
+                        'source_document': doc.get('name', 'Unknown'),
+                        'chunk_content': chunk  # Store the actual chunk content
                     })
             else:
                 print(f"⚠️ Document {doc_idx + 1} has no text content")
